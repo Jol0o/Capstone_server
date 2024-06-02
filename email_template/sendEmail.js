@@ -10,8 +10,8 @@ async function sendEmail(email, qrcode) {
         port: 587,
         secure: false, // Use `true` for port 465, `false` for all other ports
         auth: {
-            user: "jloyd9836@gmail.com",
-            pass: "fdxf pwdp nuoe bcxm",
+            user: process.env.EMAIL,
+            pass: process.env.APP_PASSWORD,
         },
     });
 
@@ -20,7 +20,7 @@ async function sendEmail(email, qrcode) {
 
     // Setup email data
     let mailOptions = {
-        from: 'jloyd9836@gmail.comm',
+        from: process.env.EMAIL,
         to: email,
         subject: 'Welcome to Our Website',
         html: html
