@@ -1,18 +1,28 @@
 const express = require('express');
 const db = require('../db');
 const router = express.Router();
+const { check, validationResult } = require('express-validator');
+const sendEmail = require('../email_template/sendEmail');
 
 
 router.get('/hello', (req, res) => {
     res.send({ express: 'Hello From Express' });
 });
 
-router.post('/create_employee', (req, res) => {
-    const { employee_id, name, email, salary_date, department, position, qrcode, phone_number } = req.body;
+router.post('/create_employee', [
+    // ... other validations ...
+    check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
+], (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
 
-    const query = `INSERT INTO employees (employee_id, name, email, salary_date, department, position, qrcode, phone_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const { employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password } = req.body;
 
-    db.query(query, [employee_id, name, email, salary_date, department, position, qrcode, phone_number], (err) => {
+    const query = `INSERT INTO employees (employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+    db.query(query, [employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password], (err) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
@@ -20,6 +30,19 @@ router.post('/create_employee', (req, res) => {
             res.status(200).json({ status: 'ok' });
         }
     });
+});
+
+
+router.post('/send_email', async (req, res) => {
+    const { email, qrcode } = req.body;
+    // console.log(email, qrcode)
+    try {
+        await sendEmail(email, qrcode);
+        res.status(200).json({ status: 'ok' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ status: 'error' });
+    }
 });
 
 
@@ -97,16 +120,38 @@ router.put('/time_out/:id', (req, res) => {
 // route for the employee table
 
 router.get('/employees', (req, res) => {
-    db.query('SELECT * FROM employees', (err, result) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const offset = (page - 1) * limit;
+
+    const countQuery = 'SELECT COUNT(*) as total FROM employees';
+    const dataQuery = 'SELECT * FROM employees LIMIT ? OFFSET ?';
+
+    db.query(countQuery, (err, countResult) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
+            const total = countResult[0].total;
+            const totalPages = Math.ceil(total / limit);
 
-            res.status(200).json({ status: 'ok', data: result });
+            db.query(dataQuery, [limit, offset], (err, dataResult) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ status: 'error' });
+                } else {
+                    res.status(200).json({
+                        status: 'ok',
+                        data: dataResult,
+                        currentPage: page,
+                        totalPages: totalPages,
+                        isLastPage: page === totalPages
+                    });
+                }
+            });
         }
     });
-})
+});
 
 router.get('/employee/:email', (req, res) => {
     const { email } = req.params;
@@ -115,24 +160,25 @@ router.get('/employee/:email', (req, res) => {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-
             res.status(200).json({ status: 'ok', data: result });
         }
     });
 })
 
-router.get('/employee/:name', (req, res) => {
+router.get('/employees/:name', (req, res) => {
     const { name } = req.params;
     db.query('SELECT * FROM employees WHERE name = ?', [name], (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
-        } else {
-
+        } else if (result.length > 0) {
             res.status(200).json({ status: 'ok', data: result });
+        } else {
+            res.status(404).json({ status: 'not found' });
         }
     });
 });
+
 
 router.get('/employees/:id', (req, res) => {
     const { id } = req.params;
