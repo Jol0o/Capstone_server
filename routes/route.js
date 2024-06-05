@@ -250,13 +250,8 @@ router.delete('/employee/:id', (req, res) => {
 router.get('/monthly_employees', (req, res) => {
     const query = `
         SELECT 
-            COUNT(DISTINCT CASE WHEN MONTH(created_at) = MONTH(CURDATE()) THEN employee_id END) as count_this_month,
-            COUNT(DISTINCT CASE WHEN MONTH(created_at) = MONTH(CURDATE()) - 1 THEN employee_id END) as count_last_month,
-            COUNT(*) as total
-        FROM 
-            employees
-        WHERE 
-            YEAR(created_at) = YEAR(CURDATE()) AND (MONTH(created_at) = MONTH(CURDATE()) OR MONTH(created_at) = MONTH(CURDATE()) - 1)
+            (SELECT COUNT(*) FROM employees WHERE YEAR(created_at) < YEAR(CURDATE()) OR (YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) < MONTH(CURDATE()))) as count_last_month,
+            (SELECT COUNT(*) FROM employees WHERE YEAR(created_at) < YEAR(CURDATE()) OR (YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) <= MONTH(CURDATE()))) as count_this_month
     `;
 
     db.query(query, (err, result) => {
@@ -271,8 +266,7 @@ router.get('/monthly_employees', (req, res) => {
                     data: {
                         this_month: result[0].count_this_month,
                         last_month: result[0].count_last_month,
-                        difference: difference,
-                        total: result[0].total
+                        difference: difference
                     }
                 });
             } else {
@@ -281,8 +275,7 @@ router.get('/monthly_employees', (req, res) => {
                     data: {
                         this_month: 0,
                         last_month: 0,
-                        difference: 0,
-                        total: 0
+                        difference: 0
                     }
                 });
             }
@@ -561,11 +554,12 @@ router.get('/attendances', (req, res) => {
 
     const countQuery = 'SELECT COUNT(*) as total FROM attendance';
     const dataQuery = `
-        SELECT attendance.*, employees.name, employees.avatar
-        FROM attendance 
-        INNER JOIN employees ON attendance.employee_id = employees.employee_id
-        LIMIT ? OFFSET ?
-    `;
+    SELECT attendance.*, employees.name, employees.avatar
+    FROM attendance 
+    INNER JOIN employees ON attendance.employee_id = employees.employee_id
+    ORDER BY attendance.date DESC
+    LIMIT ? OFFSET ?
+`;
 
     db.query(countQuery, (err, countResult) => {
         if (err) {
