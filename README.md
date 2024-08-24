@@ -95,6 +95,18 @@ To set up the MySQL database, follow these steps:
       total_pay DECIMAL(10,2) NOT NULL,
       FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
     );
+
+
+   CREATE TABLE leave_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    leave_type VARCHAR(50) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   );
     ```
 
 ## Usage
