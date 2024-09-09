@@ -15,7 +15,7 @@ const sinchClient = new SinchClient({
 });
 
 cron.schedule(
-    "44 21 * * *",
+    "0 * * * *",
     () => {
         console.log("Cron job started"); // Log when the cron job starts
         const currentDate = new Date();
@@ -30,6 +30,7 @@ cron.schedule(
                 } else {
                     result.forEach((row) => {
                         // Do something with row
+                        console.log('running cron job')
                         const number = row.phone_number.substring(1);
                         let totalHours;
                         const employee_id = row.employee_id; // replace with the actual employee id
@@ -47,13 +48,13 @@ cron.schedule(
                                         return total + attendance.hours;
                                     }, 0);
 
-                                    // db.query(`INSERT INTO payroll (employee_id, hours_worked , total_pay) VALUES (?,?, ?)`, [employee_id, totalHours, row.salary], (err, result) => {
-                                    //     if (err) {
-                                    //         console.error(err);
-                                    //     } else {
-                                    //         console.log(result);
-                                    //     }
-                                    // });
+                                    db.query(`INSERT INTO payroll (employee_id, hours_worked , total_pay) VALUES (?,?, ?)`, [employee_id, totalHours, row.salary], (err, result) => {
+                                        if (err) {
+                                            console.error(err);
+                                        } else {
+                                            console.log(result);
+                                        }
+                                    });
 
                                     console.log(number);
                                     const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.salary} working hours ${totalHours}.`;

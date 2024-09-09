@@ -3,7 +3,14 @@ const db = require('../db');
 const router = express.Router();
 const { check, validationResult } = require('express-validator');
 const sendEmail = require('../email_template/sendEmail');
+const { hashPassword } = require('../utils/auth');
+const authMiddleware = require('../middleware/auth');
 
+const LeaveRequestStatus = {
+    PENDING: 'Pending',
+    APPROVED: 'Approved',
+    REJECTED: 'Rejected'
+};
 
 router.get('/hello', (req, res) => {
     res.send({ express: 'Hello From Express' });
@@ -28,6 +35,11 @@ router.post('/create_employee', [
             res.status(500).json({ status: 'error' });
         } else {
             res.status(200).json({ status: 'ok' });
+            if (req.io) {
+                req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+            } else {
+                console.error('Socket.io instance not found');
+            }
         }
     });
 });
@@ -46,8 +58,9 @@ router.post('/send_email', async (req, res) => {
 });
 
 
-router.post('/time_in', (req, res) => {
+router.post('/time_in', authMiddleware, async (req, res) => {
     const { employee_id, attendance_id } = req.body;
+
     const now = new Date();
     const currentDate = now.toISOString().split('T')[0];
 
@@ -65,6 +78,11 @@ router.post('/time_in', (req, res) => {
             res.status(500).json({ status: 'error' });
         } else {
             res.status(200).json({ status: 'ok' });
+            if (req.io) {
+                req.io.emit('attendanceUpdate', { message: 'Employee data updated' });
+            } else {
+                console.error('Socket.io instance not found');
+            }
         }
     });
 });
@@ -100,18 +118,25 @@ router.put('/time_out/:id', (req, res) => {
     const timeInDate = parseTime(time_in);
     const timeOutDate = now;
 
+    // Calculate the difference in milliseconds
     const diffInMilliseconds = timeOutDate - timeInDate;
-    const hours = Math.round(diffInMilliseconds / (1000 * 60 * 60)); // Convert milliseconds to hours
 
+    // Convert milliseconds to hours
+    const diffInHours = diffInMilliseconds / (1000 * 60 * 60);
 
     const query = `UPDATE attendance SET time_out = ?, hours = ? WHERE attendance_id = ?`;
 
-    db.query(query, [time_out, hours, id], (err) => {
+    db.query(query, [time_out, diffInHours, id], (err) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-            res.status(200).json({ status: 'ok' });
+            res.status(200).json({ status: 'ok', hoursWorked: diffInHours });
+            if (req.io) {
+                req.io.emit('attendanceUpdate', { message: 'Employee data updated' });
+            } else {
+                console.error('Socket.io instance not found');
+            }
         }
     });
 });
@@ -147,6 +172,7 @@ router.get('/employees', (req, res) => {
                         totalPages: totalPages,
                         isLastPage: page === totalPages
                     });
+
                 }
             });
         }
@@ -155,11 +181,15 @@ router.get('/employees', (req, res) => {
 
 router.get('/employee/:email', (req, res) => {
     const { email } = req.params;
+    if (!email) return res.status(404).json({ status: 'email is required' });
     db.query('SELECT * FROM employees WHERE email = ?', [email], (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
+            if (result.length > 0) {
+                delete result[0].password;
+            }
             res.status(200).json({ status: 'ok', data: result });
         }
     });
@@ -193,47 +223,111 @@ router.get('/employees/:id', (req, res) => {
     });
 });
 
-router.put('/employees/:id', (req, res) => {
+router.put('/employees/:id', async (req, res) => {
     const { id } = req.params;
+    console.log(req.body);
     const { name, email, salary_date, department, position, qrcode, phone_number, password, salary, avatar } = req.body;
-    db.query(
-        'UPDATE employees SET name = ?, email = ?, password = ?, salary_date = ?, department = ?, position = ?, phone_number = ?, salary = ?, qrcode = ?, avatar = ? WHERE id = ?',
-        [name, email, password, salary_date, department, position, phone_number, salary, qrcode, avatar || null, id],
-        (err, result) => {
-            if (err) {
-                console.error(err);
-                res.status(500).json({ status: 'error' });
-            } else {
-                res.status(200).json({ status: 'ok', data: result });
+    console.log(req.body)
+
+    let hashedPassword = password;
+
+    if (password) {
+        try {
+            const result = await new Promise((resolve, reject) => {
+                db.query('SELECT * FROM employees WHERE id = ?', [id], (err, result) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result[0]);
+                    }
+                });
+            });
+
+            if (result.password === password) {
+                hashedPassword = await hashPassword(password);
+                db.query('UPDATE users SET password = ? WHERE user_id = ?', [hashedPassword, result.employee_id]);
+                console.log(hashedPassword);
+                console.log(result.password);
             }
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ status: 'error' });
         }
-    );
+    }
+
+
+    try {
+        db.query(
+            'UPDATE employees SET name = ?, email = ?, password = ?, salary_date = ?, department = ?, position = ?, phone_number = ?, salary = ?, qrcode = ?, avatar = ? WHERE id = ?',
+            [name, email, hashedPassword, salary_date, department, position, phone_number, salary, qrcode, avatar || null, id],
+            (err, result) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ status: 'error' });
+                } else {
+                    res.status(200).json({ status: 'ok', data: result });
+                    if (req.io) {
+                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                    } else {
+                        console.error('Socket.io instance not found');
+                    }
+                }
+            }
+        );
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ status: 'error' });
+    }
 });
 
 
 router.delete('/employee/:id', (req, res) => {
     const { id } = req.params;
-    db.query('DELETE FROM attendance WHERE employee_id = ?', [id], (err, result) => {
+    db.query('DELETE FROM attendance WHERE employee_id = ?', [id], (err) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-            db.query('DELETE FROM payroll WHERE employee_id = ?', [id], (err, result) => {
+            db.query('DELETE FROM payroll WHERE employee_id = ?', [id], (err) => {
                 if (err) {
                     console.error(err);
                     res.status(500).json({ status: 'error' });
                 } else {
-                    db.query('DELETE FROM sms_notifications WHERE employee_id = ?', [id], (err, result) => {
+                    db.query('DELETE FROM sms_notifications WHERE employee_id = ?', [id], (err) => {
                         if (err) {
                             console.error(err);
                             res.status(500).json({ status: 'error' });
                         } else {
-                            db.query('DELETE FROM employees WHERE employee_id = ?', [id], (err, result) => {
+                            db.query('DELETE FROM employees WHERE employee_id = ?', [id], (err) => {
                                 if (err) {
                                     console.error(err);
                                     res.status(500).json({ status: 'error' });
                                 } else {
-                                    res.status(200).json({ status: 'ok' });
+                                    db.query('SELECT email FROM users WHERE user_id = ?', [id], (err, result) => {
+                                        if (err) {
+                                            console.error(err);
+                                            res.status(500).json({ status: 'error' });
+                                        } else {
+                                            if (result) {
+                                                const email = result[0].email;
+                                                db.query('DELETE FROM users WHERE email = ?', [email], (err) => {
+                                                    if (err) {
+                                                        console.error(err);
+                                                        res.status(500).json({ status: 'error' });
+                                                    } else {
+                                                        res.status(200).json({ status: 'ok' });
+                                                        if (req.io) {
+                                                            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                                                        } else {
+                                                            console.error('Socket.io instance not found');
+                                                        }
+                                                    }
+                                                });
+                                            } else {
+                                                res.status(404).json({ status: 'error', message: 'User not found' });
+                                            }
+                                        }
+                                    });
                                 }
                             });
                         }
@@ -541,6 +635,11 @@ router.delete('/payroll/:id', (req, res) => {
             res.status(500).json({ status: 'error' });
         } else {
             res.status(200).json({ status: 'ok' });
+            if (req.io) {
+                req.io.emit('payrollUpdate', { message: 'Payroll data updated' });
+            } else {
+                console.error('Socket.io instance not found');
+            }
         }
     });
 })
@@ -624,11 +723,70 @@ router.delete('/attendance/:id', (req, res) => {
             res.status(500).json({ status: 'error' });
         } else {
             res.status(200).json({ status: 'ok' });
+            if (req.io) {
+                req.io.emit('attendanceUpdate', { message: 'Attendance data updated' });
+            } else {
+                console.error('Socket.io instance not found');
+            }
         }
     })
 })
 
 
+router.post('/leave_request', (req, res) => {
+    const { leaveType, startDate, endDate, reason } = req.body;
+    const { employee_id } = req.user
 
+    if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    if (!leaveType && !startDate && !endDate) return res.status(400).json({ status: 'error', message: 'leaveType, startDate and endDate are required' });
+
+    const query = 'INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
+    const values = [employee_id, leaveType, new Date(startDate), new Date(endDate), reason];
+
+    db.query(query, values, (err, result) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ status: 'error', message: 'Database error' });
+        } else {
+            res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
+        }
+    });
+});
+
+router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!Object.values(LeaveRequestStatus).includes(status)) {
+        return res.status(400).json({ status: 'error', message: 'Invalid status' });
+    }
+
+    const query = 'UPDATE leave_requests SET status = ? WHERE id = ?';
+    const values = [status, id];
+
+    db.query(query, values, (err, result) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ status: 'error', message: 'Database error' });
+        } else {
+            res.status(200).json({ status: 'ok', message: 'Leave request status updated successfully' });
+        }
+    });
+});
+
+router.get('/user_request', (req, res) => {
+    const { employee_id } = req.user
+    if (!employee_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+
+    const q = 'SELECT * FROM leave_requests WHERE employee_id = ?';
+    db.query(q, [employee_id], (err, result) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ status: 'error', message: 'Database error' });
+        } else {
+            res.status(200).json({ status: 'ok', data: result });
+        }
+    });
+})
 
 module.exports = router;

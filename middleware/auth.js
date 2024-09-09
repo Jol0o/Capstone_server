@@ -1,24 +1,28 @@
 const { verifyToken } = require("../utils/auth");
+const asyncHandler = require('express-async-handler');
 
-const authMiddleware = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
+const authMiddleware = asyncHandler(async (req, res, next) => {
+    // Check for the token in the cookies
+    const token = req.cookies.token;
+    // console.log(req.cookies)
 
-    if (!authHeader) {
-        return res.status(401).json({ message: 'No token provided' });
+    if (!token) {
+        console.log('Token is missing in cookies!');
+        return res.status(401).json({ message: 'Token is missing!' });
     }
 
-    // Remove the "Bearer " prefix
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    // console.log('Token from cookie:', token);
 
     try {
+        // Verify the token
         const decoded = verifyToken(token);
-        req.user = decoded;
-        next();
+        // console.log('Decoded token:', decoded);
+        req.user = decoded; // Attach decoded user info to the request object
+        next(); // Continue to the next middleware or route handler
     } catch (error) {
+        console.log('Invalid token:', error.message);
         return res.status(401).json({ message: 'Invalid token' });
     }
-};
+});
 
 module.exports = authMiddleware;
-
-

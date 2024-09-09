@@ -12,8 +12,8 @@ const comparePassword = async (password, hashedPassword) => {
     return await bcrypt.compare(password, hashedPassword);
 };
 
-const generateToken = (user) => {
-    return jwt.sign({ id: user.id, username: user.username }, SECRET_KEY, { expiresIn: '1w' });
+const generateToken = (results) => {
+    return jwt.sign({ id: results.id, employee_id: results.employee_id, name: results.name, email: results.email, number: results.phone_number }, SECRET_KEY, { expiresIn: '1w' });
 };
 
 const verifyToken = (token) => {
