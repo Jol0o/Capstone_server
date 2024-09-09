@@ -61,11 +61,14 @@ To set up the MySQL database, follow these steps:
     );
 
     CREATE TABLE users (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      username VARCHAR(255) NOT NULL UNIQUE,
-      email VARCHAR(255) NOT NULL UNIQUE,
-      password VARCHAR(255) NOT NULL
-    );
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    employee_id VARCHAR(255),
+    FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
+      );
+
     
     CREATE TABLE admins (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -92,6 +95,18 @@ To set up the MySQL database, follow these steps:
       total_pay DECIMAL(10,2) NOT NULL,
       FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
     );
+
+
+   CREATE TABLE leave_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    leave_type VARCHAR(50) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   );
     ```
 
 ## Usage
