@@ -20,7 +20,7 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await hashPassword(password);
 
     db.query(
-        'INSERT INTO users (email, password, user_id) VALUES (?, ?, ?)',
+        'INSERT INTO user (email, password, user_id) VALUES (?, ?, ?)',
         [email, hashedPassword, user_id],
         (error) => {
             if (error) {
@@ -40,7 +40,7 @@ router.post('/login', (req, res) => {
     const { email, password } = req.body;
 
     // Query the users table to check credentials
-    db.query('SELECT * FROM users WHERE email = ?', [email], async (error, results) => {
+    db.query('SELECT * FROM user WHERE email = ?', [email], async (error, results) => {
         if (error) {
             console.error('Database query error (users):', error);
             return res.status(500).json({ message: 'Internal server error' });
@@ -107,7 +107,7 @@ router.post('/admin/register', [
     const hashedPassword = await hashPassword(password);
 
     db.query(
-        'INSERT INTO admins (email, password) VALUES (?, ?)',
+        'INSERT INTO admin (email, password) VALUES (?, ?)',
         [email, hashedPassword],
         (error) => {
             if (error) {
@@ -125,7 +125,7 @@ router.post('/admin/register', [
 router.post('/admin/login', (req, res) => {
     const { email, password } = req.body;
 
-    db.query('SELECT * FROM admins WHERE email = ?', [email], async (error, results) => {
+    db.query('SELECT * FROM admin WHERE email = ?', [email], async (error, results) => {
         if (error) throw error;
 
         if (results.length === 0) {
@@ -155,11 +155,24 @@ router.post('/admin/login', (req, res) => {
 router.post('/logout', (req, res) => {
     res.clearCookie('token', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Set to true if your site uses HTTPS
-        sameSite: 'none',
+        secure: false, // Set to false for localhost
+        sameSite: 'lax', // Adjust sameSite attribute as needed
+        path: '/' // Ensure the path is set correctly
     });
     res.status(200).json({ message: 'Logged out successfully' });
 });
+
+//check if there is token
+
+router.get('/check-token', (req, res) => {
+    const token = req.cookies.token;
+
+    if (token) {
+        return res.status(200).json({ message: 'Token available', data: token })
+    } else {
+        return res.status(404).json({ message: 'Token not available' })
+    }
+})
 
 
 module.exports = router;
