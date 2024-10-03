@@ -634,6 +634,31 @@ router.get('/payroll', (req, res) => {
     });
 });
 
+router.get('/payroll/:id', (req, res) => {
+    const { id } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const offset = (page - 1) * limit;
+    console.log(req.params)
+
+    const query = `
+        SELECT payroll.*, employees.name, employees.avatar
+        FROM payroll 
+        INNER JOIN employees ON payroll.employee_id = employees.employee_id
+        WHERE payroll.employee_id = ?
+        LIMIT ? OFFSET ?
+    `;
+
+    db.query(query, [id, limit, offset], (err, result) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ status: 'error' });
+        } else {
+            res.status(200).json({ status: 'ok', data: result });
+        }
+    });
+});
+
 router.delete('/payroll/:id', (req, res) => {
     const { id } = req.params;
 
@@ -741,6 +766,7 @@ router.delete('/attendance/:id', (req, res) => {
 })
 
 
+//Leave request route
 router.post('/leave_request', (req, res) => {
     const { leaveType, startDate, endDate, reason } = req.body;
     const { employee_id } = req.user
@@ -748,7 +774,7 @@ router.post('/leave_request', (req, res) => {
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     if (!leaveType && !startDate && !endDate) return res.status(400).json({ status: 'error', message: 'leaveType, startDate and endDate are required' });
 
-    const query = 'INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
+    const query = 'INSERT INTO leaverequest (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
     const values = [employee_id, leaveType, new Date(startDate), new Date(endDate), reason];
 
     db.query(query, values, (err, result) => {
@@ -757,6 +783,54 @@ router.post('/leave_request', (req, res) => {
             res.status(500).json({ status: 'error', message: 'Database error' });
         } else {
             res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
+            if (req.io) {
+                req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+            } else {
+                console.error('Socket.io instance not found');
+            }
+        }
+    });
+});
+
+router.get('/leave_request', (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const offset = (page - 1) * limit;
+
+    const countQuery = 'SELECT COUNT(*) as total FROM leaverequest';
+    const dataQuery = `
+        SELECT leaverequest.*, employees.name, employees.avatar
+        FROM leaverequest 
+        INNER JOIN employees ON leaverequest.employee_id = employees.employee_id
+        ORDER BY leaverequest.created_at DESC
+        LIMIT ? OFFSET ?
+    `;
+
+
+    db.query(countQuery, (err, countResult) => {
+        if (err) {
+            console.error('Error executing count query:', err);
+            res.status(500).json({ status: 'error', message: 'Database error' });
+        } else {
+            const total = countResult[0].total;
+            const totalPages = Math.ceil(total / limit);
+
+            // Adjust offset if it exceeds the total number of records
+            const adjustedOffset = Math.min(offset, total - 1);
+            db.query(dataQuery, [limit, adjustedOffset], (err, result) => {
+                if (err) {
+                    console.error('Error executing data query:', err);
+                    res.status(500).json({ status: 'error', message: 'Database error' });
+                } else {
+                    res.status(200).json({
+                        status: 'ok',
+                        data: result,
+                        currentPage: page,
+                        totalPages: totalPages,
+                        isLastPage: page === totalPages
+                    });
+                }
+            });
         }
     });
 });
@@ -764,12 +838,21 @@ router.post('/leave_request', (req, res) => {
 router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
+    console.log('Server-side:', id, req.body);
+
+    // Ensure LeaveRequestStatus is defined and contains the expected values
+    const LeaveRequestStatus = {
+        PENDING: 'Pending',
+        PROCESS: 'Process',
+        APPROVED: 'Approved',
+        REJECTED: 'Rejected'
+    };
 
     if (!Object.values(LeaveRequestStatus).includes(status)) {
         return res.status(400).json({ status: 'error', message: 'Invalid status' });
     }
 
-    const query = 'UPDATE leave_requests SET status = ? WHERE id = ?';
+    const query = 'UPDATE leaverequest SET status = ? WHERE id = ?';
     const values = [status, id];
 
     db.query(query, values, (err, result) => {
@@ -778,6 +861,11 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
             res.status(500).json({ status: 'error', message: 'Database error' });
         } else {
             res.status(200).json({ status: 'ok', message: 'Leave request status updated successfully' });
+            if (req.io) {
+                req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+            } else {
+                console.error('Socket.io instance not found');
+            }
         }
     });
 });
@@ -793,12 +881,13 @@ router.get('/user_request', (req, res) => {
             res.status(500).json({ status: 'error', message: 'Database error' });
         } else {
             res.status(200).json({ status: 'ok', data: result });
+
         }
     });
 })
 
 router.get('/test', async (req, res) => {
-    const employee = await prisma.employee.findMany()
+    const employee = await prisma.employees.findMany()
     if (employee) {
         res.status(200).json({ status: 'ok', data: employee });
     } else {
