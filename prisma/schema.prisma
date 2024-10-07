@@ -33,7 +33,7 @@ model Employees {
   department   String
   position     String
   qrcode       String
-  avatar       String
+  avatar       String?
   email        String    @unique
   phone_number String    @unique
   salary       Int
