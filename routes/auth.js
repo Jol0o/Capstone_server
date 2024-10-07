@@ -153,9 +153,11 @@ router.post('/admin/login', (req, res) => {
 
 // Logout a user
 router.post('/logout', (req, res) => {
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     res.clearCookie('token', {
         httpOnly: true,
-        secure: false, // Set to false for localhost
+        secure: isProduction, // Set to true if in production
         sameSite: 'lax', // Adjust sameSite attribute as needed
         path: '/' // Ensure the path is set correctly
     });
