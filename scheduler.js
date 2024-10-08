@@ -36,6 +36,14 @@ cron.schedule(
                         const employee_id = row.employee_id; // replace with the actual employee id
                         const month = new Date().getMonth() + 1; // get the current month
                         const year = new Date().getFullYear(); // get the current year
+                        function generateUUID() {
+                            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                                const r = (Math.random() * 16) | 0,
+                                    v = c === 'x' ? r : (r & 0x3) | 0x8;
+                                return v.toString(16);
+                            });
+                        }
+                        const payroll_id = generateUUID();
 
                         db.query(
                             `SELECT * FROM attendance WHERE employee_id = ? AND MONTH(date) = ? AND YEAR(date) = ?`,
@@ -48,7 +56,7 @@ cron.schedule(
                                         return total + attendance.hours;
                                     }, 0);
 
-                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?)`, [employee_id , employee_id, totalHours, row.salary], (err, result) => {
+                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?,?)`, [payroll_id , employee_id, totalHours, row.salary], (err, result) => {
                                         if (err) {
                                             console.error(err);
                                         } else {
