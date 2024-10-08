@@ -27,11 +27,11 @@ router.post('/create_employee', [
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password } = req.body;
+    const { employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password, day_off } = req.body;
 
-    const query = `INSERT INTO employees (employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const query = `INSERT INTO employees (employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password, day_off) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    db.query(query, [employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password], async (err) => {
+    db.query(query, [employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password, day_off], async (err) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
