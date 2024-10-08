@@ -911,12 +911,9 @@ router.get('/get-users', (req, res) => {
 
     const countQuery = 'SELECT COUNT(*) as total FROM user';
     const dataQuery = `
-        SELECT user.*, employees.created_at AS employee_created_at
-        FROM user
-        LEFT JOIN employees ON user.employee_id = employees.employee_id
-        ORDER BY employees.created_at DESC
-        LIMIT ? OFFSET ?
-    `;
+    SELECT * FROM user
+    LIMIT ? OFFSET ?
+`;
 
     db.query(countQuery, (err, countResult) => {
         if (err) {
