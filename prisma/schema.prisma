@@ -17,7 +17,7 @@ model Attendance {
   id           Int     @id @default(autoincrement())
   date         String
   time_in      String
-  time_out     String
+  time_out     String?
   attendance_id String
   employee_id  String
   hours        Int?
