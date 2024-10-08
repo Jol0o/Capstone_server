@@ -905,34 +905,41 @@ router.get('/user_request', (req, res) => {
 
 
 router.get('/get-users', async (req, res) => {
-    const { page = 1, limit = 10 } = req.query;
-
-    const pageNumber = parseInt(page, 10);
-    const limitNumber = parseInt(limit, 10);
-    const skip = (pageNumber - 1) * limitNumber;
-
-    const query = `
-        SELECT * FROM user
-        LIMIT ${limitNumber} OFFSET ${skip}
-    `;
-
-    const countQuery = `
-        SELECT COUNT(*) as total FROM user
-    `;
-
     try {
-        db.query(query, (err, users) => {
+        // Get query parameters, set defaults for page and limit
+        const { page = 1, limit = 10 } = req.query;
+
+        // Parse query parameters into integers and calculate offset (skip)
+        const pageNumber = parseInt(page, 10) || 1;   // Fallback to 1 if invalid
+        const limitNumber = parseInt(limit, 10) || 10; // Fallback to 10 if invalid
+        const skip = (pageNumber - 1) * limitNumber;
+
+        // SQL query for paginated users
+        const query = `
+            SELECT * FROM user
+            LIMIT ? OFFSET ?
+        `;
+
+        // SQL query to count total users
+        const countQuery = `
+            SELECT COUNT(*) as total FROM user
+        `;
+
+        // Execute both queries
+        db.query(query, [limitNumber, skip], (err, users) => {
             if (err) {
                 console.error('Error fetching users:', err);
                 return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
             }
 
+            // Execute the count query inside the first callback
             db.query(countQuery, (err, result) => {
                 if (err) {
                     console.error('Error counting users:', err);
                     return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
                 }
 
+                // Send response with paginated users and total count
                 const totalUsers = result[0].total;
 
                 res.status(200).json({
@@ -944,11 +951,13 @@ router.get('/get-users', async (req, res) => {
                 });
             });
         });
+
     } catch (error) {
         console.error('Error fetching users:', error);
-        res.status(500).json({ status: 'error', message: 'Internal Server Error' });
+        return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
     }
 });
+
 
 router.get('/test', async (req, res) => {
     const employee = await prisma.employees.findMany()
