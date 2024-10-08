@@ -904,58 +904,44 @@ router.get('/user_request', (req, res) => {
 })
 
 
-router.get('/get-users', async (req, res) => {
-    try {
-        // Get query parameters, set defaults for page and limit
-        const { page = 1, limit = 10 } = req.query;
+router.get('/get-users', (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
 
-        // Parse query parameters into integers and calculate offset (skip)
-        const pageNumber = parseInt(page, 10) || 1;   // Fallback to 1 if invalid
-        const limitNumber = parseInt(limit, 10) || 10; // Fallback to 10 if invalid
-        const skip = (pageNumber - 1) * limitNumber;
+    const countQuery = 'SELECT COUNT(*) as total FROM user';
+    const dataQuery = `
+        SELECT * FROM user
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
+    `;
 
-        // SQL query for paginated users
-        const query = `
-            SELECT * FROM user
-            LIMIT ? OFFSET ?
-        `;
+    db.query(countQuery, (err, countResult) => {
+        if (err) {
+            console.error('Error executing count query:', err);
+            res.status(500).json({ status: 'error', message: 'Database error' });
+        } else {
+            const total = countResult[0].total;
+            const totalPages = Math.ceil(total / limit);
 
-        // SQL query to count total users
-        const countQuery = `
-            SELECT COUNT(*) as total FROM user
-        `;
-
-        // Execute both queries
-        db.query(query, [limitNumber, skip], (err, users) => {
-            if (err) {
-                console.error('Error fetching users:', err);
-                return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
-            }
-
-            // Execute the count query inside the first callback
-            db.query(countQuery, (err, result) => {
+            // Adjust offset if it exceeds the total number of records
+            const adjustedOffset = Math.min(offset, total - 1);
+            db.query(dataQuery, [limit, adjustedOffset], (err, result) => {
                 if (err) {
-                    console.error('Error counting users:', err);
-                    return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
+                    console.error('Error executing data query:', err);
+                    res.status(500).json({ status: 'error', message: 'Database error' });
+                } else {
+                    res.status(200).json({
+                        status: 'ok',
+                        data: result,
+                        currentPage: page,
+                        totalPages: totalPages,
+                        isLastPage: page === totalPages
+                    });
                 }
-
-                // Send response with paginated users and total count
-                const totalUsers = result[0].total;
-
-                res.status(200).json({
-                    status: 'ok',
-                    data: users,
-                    total: totalUsers,
-                    page: pageNumber,
-                    limit: limitNumber,
-                });
             });
-        });
-
-    } catch (error) {
-        console.error('Error fetching users:', error);
-        return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
-    }
+        }
+    });
 });
 
 
