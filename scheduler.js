@@ -48,7 +48,7 @@ cron.schedule(
                                         return total + attendance.hours;
                                     }, 0);
 
-                                    db.query(`INSERT INTO payroll (employee_id, hours_worked , total_pay) VALUES (?,?, ?)`, [employee_id, totalHours, row.salary], (err, result) => {
+                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?)`, [employee_id , employee_id, totalHours, row.salary], (err, result) => {
                                         if (err) {
                                             console.error(err);
                                         } else {
