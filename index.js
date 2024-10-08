@@ -23,7 +23,7 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
     cors: {
-        origin: "https://capstone-system-two.vercel.app",
+        origin: ["https://capstone-system-two.vercel.app", "https://www.aap-h.com"], // Add new origin
         methods: ["GET", "POST"],
         allowedHeaders: ["Authorization", "Content-Type"], // Add Content-Type to allowed headers
         credentials: true
@@ -31,12 +31,11 @@ const io = socketIo(server, {
 });
 
 const corsOptions = {
-    origin: 'https://capstone-system-two.vercel.app', // Ensure this matches your frontend URL
+    origin: ['https://capstone-system-two.vercel.app', 'https://www.aap-h.com'], // Add new origin
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true, // Allow cookies to be sent
 };
-
 app.use(cors(corsOptions));
 app.use(cookieParser()); // Ensure cookie parser middleware is used
 app.use(express.json());
