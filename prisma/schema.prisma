@@ -38,7 +38,7 @@ model Employees {
   phone_number String    @unique
   salary       Int
   password     String
-  day_off      Boolean
+  day_off      Boolean?
   attendance   Attendance[]
   leaveRequests LeaveRequest[]
   payrolls     Payroll[]
@@ -61,7 +61,7 @@ model LeaveRequest {
 
 model Payroll {
   id           Int     @id @default(autoincrement())
-  payroll_id   String
+  payroll_id   String?
   employee_id  String
   hours_worked Float
   total_pay    Float
