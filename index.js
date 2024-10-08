@@ -23,7 +23,7 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
     cors: {
-        origin: "http://localhost:3000",
+        origin: "https://capstone-system-two.vercel.app",
         methods: ["GET", "POST"],
         allowedHeaders: ["Authorization", "Content-Type"], // Add Content-Type to allowed headers
         credentials: true
@@ -31,7 +31,7 @@ const io = socketIo(server, {
 });
 
 const corsOptions = {
-    origin: 'http://localhost:3000', // Ensure this matches your frontend URL
+    origin: 'https://capstone-system-two.vercel.app', // Ensure this matches your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true, // Allow cookies to be sent
