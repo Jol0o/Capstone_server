@@ -903,6 +903,34 @@ router.get('/user_request', (req, res) => {
     });
 })
 
+router.get('/get-users', async (req, res) => {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    try {
+        const users = await prisma.user.findMany({
+            skip: skip,
+            take: limitNumber,
+        });
+
+        const totalUsers = await prisma.user.count();
+
+        res.status(200).json({
+            status: 'ok',
+            data: users,
+            total: totalUsers,
+            page: pageNumber,
+            limit: limitNumber,
+        });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ status: 'error', message: 'Internal Server Error' });
+    }
+});
+
 router.get('/test', async (req, res) => {
     const employee = await prisma.employees.findMany()
     if (employee) {
