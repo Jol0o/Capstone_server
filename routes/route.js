@@ -903,6 +903,7 @@ router.get('/user_request', (req, res) => {
     });
 })
 
+
 router.get('/get-users', async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
 
@@ -910,20 +911,38 @@ router.get('/get-users', async (req, res) => {
     const limitNumber = parseInt(limit, 10);
     const skip = (pageNumber - 1) * limitNumber;
 
+    const query = `
+        SELECT * FROM user
+        LIMIT ${limitNumber} OFFSET ${skip}
+    `;
+
+    const countQuery = `
+        SELECT COUNT(*) as total FROM user
+    `;
+
     try {
-        const users = await prisma.user.findMany({
-            skip: skip,
-            take: limitNumber,
-        });
+        db.query(query, (err, users) => {
+            if (err) {
+                console.error('Error fetching users:', err);
+                return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
+            }
 
-        const totalUsers = await prisma.user.count();
+            db.query(countQuery, (err, result) => {
+                if (err) {
+                    console.error('Error counting users:', err);
+                    return res.status(500).json({ status: 'error', message: 'Internal Server Error' });
+                }
 
-        res.status(200).json({
-            status: 'ok',
-            data: users,
-            total: totalUsers,
-            page: pageNumber,
-            limit: limitNumber,
+                const totalUsers = result[0].total;
+
+                res.status(200).json({
+                    status: 'ok',
+                    data: users,
+                    total: totalUsers,
+                    page: pageNumber,
+                    limit: limitNumber,
+                });
+            });
         });
     } catch (error) {
         console.error('Error fetching users:', error);
