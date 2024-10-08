@@ -23,7 +23,7 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
     cors: {
-        origin: ["https://capstone-system-two.vercel.app", "https://www.aap-h.com"], // Add new origin
+        origin: ["https://capstone-system-two.vercel.app", "https://www.aap-h.com",'http://localhost:3000'], // Add new origin
         methods: ["GET", "POST"],
         allowedHeaders: ["Authorization", "Content-Type"], // Add Content-Type to allowed headers
         credentials: true
@@ -31,7 +31,7 @@ const io = socketIo(server, {
 });
 
 const corsOptions = {
-    origin: ['https://capstone-system-two.vercel.app', 'https://www.aap-h.com'], // Add new origin
+    origin: ['https://capstone-system-two.vercel.app', 'https://www.aap-h.com','http://localhost:3000'], // Add new origin
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true, // Allow cookies to be sent
