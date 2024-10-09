@@ -289,61 +289,27 @@ router.put('/employees/:id', async (req, res) => {
 });
 
 
-router.delete('/employee/:id', (req, res) => {
+router.delete('/employee/:id', async (req, res) => {
     const { id } = req.params;
-    db.query('DELETE FROM attendance WHERE employee_id = ?', [id], (err) => {
-        if (err) {
-            console.error(err);
-            res.status(500).json({ status: 'error' });
+
+    try {
+        await db.query('DELETE FROM attendance WHERE employee_id = ?', [id]);
+        await db.query('DELETE FROM payroll WHERE employee_id = ?', [id]);
+        await db.query('DELETE FROM smsnotification WHERE employee_id = ?', [id]);
+        await db.query('DELETE FROM employees WHERE employee_id = ?', [id]);
+
+        await db.query('DELETE FROM user WHERE user_id = ?', [id]);
+
+        res.status(200).json({ status: 'ok' });
+        if (req.io) {
+            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
         } else {
-            db.query('DELETE FROM payroll WHERE employee_id = ?', [id], (err) => {
-                if (err) {
-                    console.error(err);
-                    res.status(500).json({ status: 'error' });
-                } else {
-                    db.query('DELETE FROM smsnotification WHERE employee_id = ?', [id], (err) => {
-                        if (err) {
-                            console.error(err);
-                            res.status(500).json({ status: 'error' });
-                        } else {
-                            db.query('DELETE FROM employees WHERE employee_id = ?', [id], (err) => {
-                                if (err) {
-                                    console.error(err);
-                                    res.status(500).json({ status: 'error' });
-                                } else {
-                                    db.query('SELECT email FROM user WHERE user_id = ?', [id], (err, result) => {
-                                        if (err) {
-                                            console.error(err);
-                                            res.status(500).json({ status: 'error' });
-                                        } else {
-                                            if (result) {
-                                                const email = result[0].email;
-                                                db.query('DELETE FROM user WHERE email = ?', [email], (err) => {
-                                                    if (err) {
-                                                        console.error(err);
-                                                        res.status(500).json({ status: 'error' });
-                                                    } else {
-                                                        res.status(200).json({ status: 'ok' });
-                                                        if (req.io) {
-                                                            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                                                        } else {
-                                                            console.error('Socket.io instance not found');
-                                                        }
-                                                    }
-                                                });
-                                            } else {
-                                                res.status(404).json({ status: 'error', message: 'User not found' });
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                    });
-                }
-            });
+            console.error('Socket.io instance not found');
         }
-    });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ status: 'error', message: 'Database error' });
+    }
 });
 
 
@@ -905,43 +871,53 @@ router.get('/user_request', (req, res) => {
 
 
 router.get('/get-users', (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
+    const limit = Math.max(1, parseInt(req.query.limit) || 10); // Ensure limit is at least 1
 
-    const countQuery = 'SELECT COUNT(*) as total FROM user';
-    const dataQuery = `
-    SELECT * FROM user
-    LIMIT ? OFFSET ?
-`;
-
-    db.query(countQuery, (err, countResult) => {
+    db.query('SELECT COUNT(*) as total FROM user', (err, countResult) => {
         if (err) {
             console.error('Error executing count query:', err);
-            res.status(500).json({ status: 'error', message: 'Database error' });
-        } else {
-            const total = countResult[0].total;
-            const totalPages = Math.ceil(total / limit);
-
-            // Adjust offset if it exceeds the total number of records
-            const adjustedOffset = Math.min(offset, total - 1);
-            db.query(dataQuery, [limit, adjustedOffset], (err, result) => {
-                if (err) {
-                    console.error('Error executing data query:', err);
-                    res.status(500).json({ status: 'error', message: 'Database error' });
-                } else {
-                    res.status(200).json({
-                        status: 'ok',
-                        data: result,
-                        currentPage: page,
-                        totalPages: totalPages,
-                        isLastPage: page === totalPages
-                    });
-                }
-            });
+            return res.status(500).json({ status: 'error', message: 'Database error' });
         }
+
+        const total = countResult[0].total;
+        const totalPages = Math.ceil(total / limit);
+
+        // Adjust the page to not exceed total pages
+        const page = Math.min(Math.max(1, parseInt(req.query.page) || 1), totalPages);
+        const offset = (page - 1) * limit;
+
+        console.log(`Total records: ${total}, Total pages: ${totalPages}, Limit: ${limit}, Offset: ${offset}`);
+
+        db.query('SELECT * FROM user LIMIT ? OFFSET ?', [limit, offset], (err, result) => {
+            if (err) {
+                console.error('Error executing data query:', err);
+                return res.status(500).json({ status: 'error', message: 'Database error' });
+            }
+
+            res.status(200).json({
+                status: 'ok',
+                data: result,
+                currentPage: page,
+                totalPages: totalPages,
+                isLastPage: page === totalPages
+            });
+        });
     });
 });
+
+router.delete('/delete-user/:id', (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ status: 'error', message: 'User ID is required' });
+    db.query('DELETE FROM user WHERE user_id = ?', [id], (err) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ status: 'error', message: 'Database error' });
+        }
+
+        res.status(200).json({ status: 'ok', message: 'User deleted successfully' });
+    });
+});
+
 
 
 router.get('/test', async (req, res) => {
