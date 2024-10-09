@@ -15,7 +15,7 @@ const sinchClient = new SinchClient({
 });
 
 cron.schedule(
-    "0 12 * * *",
+    "0 * * * *",
     () => {
         console.log("Cron job started"); // Log when the cron job starts
         const currentDate = new Date();
@@ -37,7 +37,7 @@ cron.schedule(
                         const month = new Date().getMonth() + 1; // get the current month
                         const year = new Date().getFullYear(); // get the current year
                         function generateUUID() {
-                            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
                                 const r = (Math.random() * 16) | 0,
                                     v = c === 'x' ? r : (r & 0x3) | 0x8;
                                 return v.toString(16);
@@ -56,7 +56,7 @@ cron.schedule(
                                         return total + attendance.hours;
                                     }, 0);
 
-                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?,?)`, [payroll_id, employee_id, totalHours, row.salary], (err, result) => {
+                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?,?)`, [payroll_id , employee_id, totalHours, row.salary], (err, result) => {
                                         if (err) {
                                             console.error(err);
                                         } else {
