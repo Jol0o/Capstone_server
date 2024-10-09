@@ -220,25 +220,12 @@ router.get('/employees/:name', (req, res) => {
 
 router.get('/employees/:id', (req, res) => {
     const { id } = req.params;
-    
-    // First query by id
     db.query('SELECT * FROM employees WHERE id = ?', [id], (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
-        } else if (result.length === 0) {
-            // If no result, try querying by employee_id
-            db.query('SELECT * FROM employees WHERE employee_id = ?', [id], (err, result) => {
-                if (err) {
-                    console.error(err);
-                    res.status(500).json({ status: 'error' });
-                } else if (result.length === 0) {
-                    res.status(404).json({ status: 'not found' });
-                } else {
-                    res.status(200).json({ status: 'ok', data: result });
-                }
-            });
         } else {
+
             res.status(200).json({ status: 'ok', data: result });
         }
     });
@@ -248,36 +235,32 @@ router.put('/employees/:id', async (req, res) => {
     const { id } = req.params;
     console.log(req.body);
     const { name, email, salary_date, department, position, qrcode, phone_number, password, salary, avatar } = req.body;
-    console.log(req.body)
+    console.log(req.body);
 
     let hashedPassword = password;
 
-    if (password) {
-        try {
-            const result = await new Promise((resolve, reject) => {
-                db.query('SELECT * FROM employees WHERE id = ?', [id], (err, result) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result[0]);
-                    }
-                });
+    try {
+        const result = await new Promise((resolve, reject) => {
+            db.query('SELECT * FROM employees WHERE id = ?', [id], (err, result) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(result[0]);
+                }
             });
+        });
 
+        if (password) {
             if (result.password === password) {
                 hashedPassword = await hashPassword(password);
                 db.query('UPDATE user SET password = ? WHERE user_id = ?', [hashedPassword, result.employee_id]);
                 console.log(hashedPassword);
                 console.log(result.password);
             }
-        } catch (err) {
-            console.error(err);
-            return res.status(500).json({ status: 'error' });
+        } else {
+            hashedPassword = result.password;
         }
-    }
 
-
-    try {
         db.query(
             'UPDATE employees SET name = ?, email = ?, password = ?, salary_date = ?, department = ?, position = ?, phone_number = ?, salary = ?, qrcode = ?, avatar = ? WHERE id = ?',
             [name, email, hashedPassword, salary_date, department, position, phone_number, salary, qrcode, avatar || null, id],
@@ -295,12 +278,11 @@ router.put('/employees/:id', async (req, res) => {
                 }
             }
         );
-    } catch (error) {
-        console.error(error);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ status: 'error' });
     }
 });
-
 
 router.delete('/employee/:id', async (req, res) => {
     const { id } = req.params;
