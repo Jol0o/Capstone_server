@@ -261,9 +261,12 @@ router.put('/employees/:id', async (req, res) => {
             hashedPassword = result.password;
         }
 
+        // Convert salary_date to the correct format
+        const formattedSalaryDate = salary_date ? new Date(salary_date).toISOString().slice(0, 19).replace('T', ' ') : null;
+
         db.query(
             'UPDATE employees SET name = ?, email = ?, password = ?, salary_date = ?, department = ?, position = ?, phone_number = ?, salary = ?, qrcode = ?, avatar = ? WHERE id = ?',
-            [name, email, hashedPassword, salary_date, department, position, phone_number, salary, qrcode, avatar || null, id],
+            [name, email, hashedPassword, formattedSalaryDate, department, position, phone_number, salary, qrcode, avatar || null, id],
             (err, result) => {
                 if (err) {
                     console.error(err);
