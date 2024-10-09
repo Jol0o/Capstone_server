@@ -220,12 +220,25 @@ router.get('/employees/:name', (req, res) => {
 
 router.get('/employees/:id', (req, res) => {
     const { id } = req.params;
+    
+    // First query by id
     db.query('SELECT * FROM employees WHERE id = ?', [id], (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
+        } else if (result.length === 0) {
+            // If no result, try querying by employee_id
+            db.query('SELECT * FROM employees WHERE employee_id = ?', [id], (err, result) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ status: 'error' });
+                } else if (result.length === 0) {
+                    res.status(404).json({ status: 'not found' });
+                } else {
+                    res.status(200).json({ status: 'ok', data: result });
+                }
+            });
         } else {
-
             res.status(200).json({ status: 'ok', data: result });
         }
     });
