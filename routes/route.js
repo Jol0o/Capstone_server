@@ -43,8 +43,14 @@ router.post('/create_employee', [
 
     db.query(query, [employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password, day_off], async (err) => {
         if (err) {
-            console.error(err);
-            res.status(500).json({ status: 'error' });
+            if (err.code === 'ER_DUP_ENTRY') {
+                const field = err.sqlMessage.match(/for key '(.+?)'/)[1];
+                const fieldName = field.split('_')[1]; // Assuming the field name is after the first underscore
+                return res.status(400).json({ status: 'error', message: `Duplicate entry detected for ${fieldName}. Please check the ${fieldName} field.` });
+            } else {
+                console.error(err);
+                return res.status(500).json({ status: 'error', message: 'Internal server error' });
+            }
         } else {
             try {
                 await sendEmail(email, qrcode);
