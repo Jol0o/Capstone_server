@@ -92,20 +92,26 @@ router.get('/search_employee', async (req, res) => {
     });
 });
 
+
 router.get('/search_attendance', async (req, res) => {
-    const { q } = req.query;
+    const { q, limit = 10, offset = 0 } = req.query;
 
     if (!q) {
         return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
     }
 
-    let query = 'SELECT * FROM attendance WHERE 1=1';
+    let query = `
+        SELECT attendance.*, employees.name, employees.avatar
+        FROM attendance 
+        INNER JOIN employees ON attendance.employee_id = employees.employee_id
+        WHERE 1=1
+        AND (attendance.employee_id LIKE ? OR attendance.attendance_id LIKE ?)
+        ORDER BY attendance.date DESC
+        LIMIT ? OFFSET ?
+    `;
     const queryParams = [];
-
-    // Search across multiple fields
-    query += ' AND (employee_id LIKE ? OR attendance_id LIKE ?)';
     const searchPattern = `%${q}%`;
-    queryParams.push(searchPattern, searchPattern);
+    queryParams.push(searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
@@ -115,23 +121,26 @@ router.get('/search_attendance', async (req, res) => {
         res.status(200).json({ status: 'ok', data: results });
     });
 });
-
 
 
 router.get('/search_payroll', async (req, res) => {
-    const { q } = req.query;
+    const { q, limit = 10, offset = 0 } = req.query;
 
     if (!q) {
         return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
     }
 
-    let query = 'SELECT * FROM attendance WHERE 1=1';
+    let query = `
+        SELECT payroll.*, employees.name, employees.avatar
+        FROM payroll 
+        INNER JOIN employees ON payroll.employee_id = employees.employee_id
+        WHERE 1=1
+        AND (payroll.employee_id LIKE ? OR payroll.payroll_id LIKE ?)
+        LIMIT ? OFFSET ?
+    `;
     const queryParams = [];
-
-    // Search across multiple fields
-    query += ' AND (employee_id LIKE ? OR payroll_id LIKE ?)';
     const searchPattern = `%${q}%`;
-    queryParams.push(searchPattern, searchPattern);
+    queryParams.push(searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
@@ -141,21 +150,27 @@ router.get('/search_payroll', async (req, res) => {
         res.status(200).json({ status: 'ok', data: results });
     });
 });
+
 
 router.get('/search_leave_request', async (req, res) => {
-    const { q } = req.query;
+    const { q, limit = 10, offset = 0 } = req.query;
 
     if (!q) {
         return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
     }
 
-    let query = 'SELECT * FROM LeaveRequest WHERE 1=1';
+    let query = `
+        SELECT leaverequest.*, employees.name, employees.avatar
+        FROM leaverequest 
+        INNER JOIN employees ON leaverequest.employee_id = employees.employee_id
+        WHERE 1=1
+        AND (leaverequest.employee_id LIKE ? OR leaverequest.leave_type LIKE ? OR leaverequest.reason LIKE ? OR leaverequest.status LIKE ?)
+        ORDER BY leaverequest.created_at DESC
+        LIMIT ? OFFSET ?
+    `;
     const queryParams = [];
-
-    // Search across multiple fields
-    query += ' AND (employee_id LIKE ? OR leave_type LIKE ? OR reason LIKE ? OR status LIKE ?)';
     const searchPattern = `%${q}%`;
-    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
@@ -165,6 +180,7 @@ router.get('/search_leave_request', async (req, res) => {
         res.status(200).json({ status: 'ok', data: results });
     });
 });
+
 
 router.post('/send_email', async (req, res) => {
     const { email, qrcode } = req.body;
