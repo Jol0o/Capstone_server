@@ -19,9 +19,18 @@ router.get('/hello', (req, res) => {
     res.send({ express: 'Hello From Express' });
 });
 
+
 router.post('/create_employee', [
-    // ... other validations ...
+    check('employee_id').notEmpty().withMessage('Employee ID is required'),
+    check('name').notEmpty().withMessage('Name is required'),
+    check('email').isEmail().withMessage('Valid email is required'),
+    check('salary_date').notEmpty().withMessage('Salary date is required'),
+    check('department').notEmpty().withMessage('Department is required'),
+    check('position').notEmpty().withMessage('Position is required'),
+    check('qrcode').notEmpty().withMessage('QR code is required'),
     check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
+    check('salary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+    check('password').notEmpty().withMessage('Password is required'),
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
