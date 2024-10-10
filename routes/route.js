@@ -65,7 +65,6 @@ router.post('/send_email', async (req, res) => {
     }
 });
 
-
 router.post('/time_in', authMiddleware, async (req, res) => {
     const { employee_id, attendance_id } = req.body;
 
@@ -74,12 +73,12 @@ router.post('/time_in', authMiddleware, async (req, res) => {
     const time_in = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
     if (!employee_id) {
-        return res.status(400).json({ status: 'error', message: 'employee_id is required' });
+        return res.status(400).json({ status: 'error', message: 'Employee_id is required' });
     }
 
     const query = `INSERT INTO attendance (employee_id, time_in, date, attendance_id, time_out) VALUES (?, ?, ?, ?, ?)`;
 
-    db.query(query, [employee_id, time_in, currentDate, attendance_id, null], (err) => {
+    db.query(query, [employee_id, time_in, currentDate, attendance_id, ''], (err) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
