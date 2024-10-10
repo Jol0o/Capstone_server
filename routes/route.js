@@ -103,8 +103,8 @@ router.put('/time_out/:id', (req, res) => {
         return res.status(400).json({ status: 'error', message: 'time_in is required' });
     }
 
-    const now = new Date();
-    const time_out = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const now = moment().tz('Asia/Manila');
+    const time_out = now.format('hh:mm A'); // Format the time as hh:mm AM/PM
 
     // Helper function to parse time string in 'HH:MM AM/PM' format
     const parseTime = (timeString) => {
