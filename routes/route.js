@@ -359,14 +359,31 @@ router.get('/employees/:id', (req, res) => {
     });
 });
 
-router.put('/employees/:id', async (req, res) => {
+
+router.put('/employees/:id', [
+    check('name').notEmpty().withMessage('Name is required'),
+    check('email').isEmail().withMessage('Valid email is required'),
+    check('salary_date').notEmpty().withMessage('Salary date is required'),
+    check('department').notEmpty().withMessage('Department is required'),
+    check('position').notEmpty().withMessage('Position is required'),
+    check('qrcode').notEmpty().withMessage('QR code is required'),
+    check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
+    check('salary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+    check('password').notEmpty().withMessage('Password is required'),
+], async (req, res) => {
     const { id } = req.params;
     const { name, email, salary_date, department, position, qrcode, phone_number, password, salary, avatar } = req.body;
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
 
     let hashedPassword = password;
 
     try {
-        const result = await new Promise((resolve, reject) => {
+        // Fetch existing employee data
+        const existingEmployee = await new Promise((resolve, reject) => {
             db.query('SELECT * FROM employees WHERE id = ?', [id], (err, result) => {
                 if (err) {
                     reject(err);
@@ -376,43 +393,51 @@ router.put('/employees/:id', async (req, res) => {
             });
         });
 
-        if (password) {
-            if (result.password === password) {
-                hashedPassword = await hashPassword(password);
-                db.query('UPDATE user SET password = ? WHERE user_id = ?', [hashedPassword, result.employee_id]);
-            }
+        if (!existingEmployee) {
+            return res.status(404).json({ status: 'error', message: 'Employee not found' });
+        }
+
+        // Hash password if provided and different from the existing one
+        if (password && password !== existingEmployee.password) {
+            hashedPassword = await hashPassword(password);
+            db.query('UPDATE user SET password = ? WHERE user_id = ?', [hashedPassword, existingEmployee.employee_id]);
         } else {
-            hashedPassword = result.password;
+            hashedPassword = existingEmployee.password;
         }
 
         // Convert salary_date to the correct format
         const formattedSalaryDate = salary_date ? new Date(salary_date).toISOString().slice(0, 19).replace('T', ' ') : null;
 
+        // Update employee data
         db.query(
             'UPDATE employees SET name = ?, email = ?, password = ?, salary_date = ?, department = ?, position = ?, phone_number = ?, salary = ?, qrcode = ?, avatar = ? WHERE id = ?',
             [name, email, hashedPassword, formattedSalaryDate, department, position, phone_number, salary, qrcode, avatar || null, id],
             (err, result) => {
                 if (err) {
-                    console.error(err);
-                    res.status(500).json({ status: 'error' });
-                } else {
-                    // Check if the email has changed and update the user table
-                    if (email && email !== result.email) {
-                        db.query('UPDATE user SET email = ? WHERE user_id = ?', [email, result.employee_id], (err) => {
-                            if (err) {
-                                console.error(err);
-                                res.status(500).json({ status: 'error' });
-                                return;
-                            }
-                        });
-                    }
-
-                    res.status(200).json({ status: 'ok', data: result });
-                    if (req.io) {
-                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                    if (err.code === 'ER_DUP_ENTRY') {
+                        const field = err.sqlMessage.match(/for key '(.+?)'/)[1];
+                        const fieldName = field.split('_')[1]; // Assuming the field name is after the first underscore
+                        return res.status(400).json({ status: 'error', message: `Duplicate entry detected for ${fieldName}. Please check the ${fieldName} field.` });
                     } else {
-                        console.error('Socket.io instance not found');
+                        console.error(err);
+                        return res.status(500).json({ status: 'error', message: 'Internal server error' });
                     }
+                }
+                // Check if the email has changed and update the user table
+                if (email && email !== existingEmployee.email) {
+                    db.query('UPDATE user SET email = ? WHERE user_id = ?', [email, existingEmployee.employee_id], (err) => {
+                        if (err) {
+                            console.error(err);
+                            return res.status(500).json({ status: 'error' });
+                        }
+                    });
+                }
+
+                res.status(200).json({ status: 'ok', data: result });
+                if (req.io) {
+                    req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                } else {
+                    console.error('Socket.io instance not found');
                 }
             }
         );
