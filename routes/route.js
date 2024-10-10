@@ -369,7 +369,6 @@ router.put('/employees/:id', [
     check('qrcode').notEmpty().withMessage('QR code is required'),
     check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
     check('salary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
-    check('password').notEmpty().withMessage('Password is required'),
 ], async (req, res) => {
     const { id } = req.params;
     const { name, email, salary_date, department, position, qrcode, phone_number, password, salary, avatar } = req.body;
