@@ -361,9 +361,7 @@ router.get('/employees/:id', (req, res) => {
 
 router.put('/employees/:id', async (req, res) => {
     const { id } = req.params;
-    console.log(req.body);
     const { name, email, salary_date, department, position, qrcode, phone_number, password, salary, avatar } = req.body;
-    console.log(req.body);
 
     let hashedPassword = password;
 
@@ -382,8 +380,6 @@ router.put('/employees/:id', async (req, res) => {
             if (result.password === password) {
                 hashedPassword = await hashPassword(password);
                 db.query('UPDATE user SET password = ? WHERE user_id = ?', [hashedPassword, result.employee_id]);
-                console.log(hashedPassword);
-                console.log(result.password);
             }
         } else {
             hashedPassword = result.password;
@@ -400,6 +396,17 @@ router.put('/employees/:id', async (req, res) => {
                     console.error(err);
                     res.status(500).json({ status: 'error' });
                 } else {
+                    // Check if the email has changed and update the user table
+                    if (email && email !== result.email) {
+                        db.query('UPDATE user SET email = ? WHERE user_id = ?', [email, result.employee_id], (err) => {
+                            if (err) {
+                                console.error(err);
+                                res.status(500).json({ status: 'error' });
+                                return;
+                            }
+                        });
+                    }
+
                     res.status(200).json({ status: 'ok', data: result });
                     if (req.io) {
                         req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
