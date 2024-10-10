@@ -1,6 +1,7 @@
 const cron = require("node-cron");
 const db = require("./db");
 const { SinchClient } = require("@sinch/sdk-core");
+const moment = require('moment-timezone');
 require("dotenv").config();
 
 if (!db) {
@@ -18,8 +19,8 @@ cron.schedule(
     "0 15 * * *",
     () => {
         console.log("Cron job started"); // Log when the cron job starts
-        const currentDate = new Date();
-        const currentDay = currentDate.getDate(); // Get current day
+        const currentDate = moment().tz('Asia/Manila');
+        const currentDay = currentDate.date(); // Get current day
 
         db.query(
             "SELECT *, DAY(salary_date) as salary_date FROM employees WHERE DAY(salary_date) = ?",
@@ -34,8 +35,8 @@ cron.schedule(
                         const number = row.phone_number.substring(1);
                         let totalHours;
                         const employee_id = row.employee_id; // replace with the actual employee id
-                        const month = new Date().getMonth() + 1; // get the current month
-                        const year = new Date().getFullYear(); // get the current year
+                        const month = currentDate.month() + 1; // get the current month
+                        const year = currentDate.year(); // get the current year
                         function generateUUID() {
                             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
                                 const r = (Math.random() * 16) | 0,

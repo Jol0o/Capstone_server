@@ -7,6 +7,7 @@ const { hashPassword } = require('../utils/auth');
 const authMiddleware = require('../middleware/auth');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const moment = require('moment-timezone');
 
 const LeaveRequestStatus = {
     PENDING: 'Pending',
@@ -68,9 +69,10 @@ router.post('/send_email', async (req, res) => {
 router.post('/time_in', authMiddleware, async (req, res) => {
     const { employee_id, attendance_id } = req.body;
 
-    const now = new Date();
-    const currentDate = now.toISOString().split('T')[0];
-    const time_in = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    // Get the current date and time in the Philippines timezone
+    const now = moment().tz('Asia/Manila');
+    const currentDate = now.format('YYYY-MM-DD'); // Format the date as YYYY-MM-DD
+    const time_in = now.format('hh:mm A'); // Format the time as hh:mm AM/PM
 
     if (!employee_id) {
         return res.status(400).json({ status: 'error', message: 'Employee_id is required' });
