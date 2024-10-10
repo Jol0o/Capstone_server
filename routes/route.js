@@ -203,9 +203,9 @@ router.get('/employee/:email', (req, res) => {
     });
 })
 
-router.get('/employees/:name', (req, res) => {
-    const { name } = req.params;
-    db.query('SELECT * FROM employees WHERE name = ?', [name], (err, result) => {
+router.get('/employees/:employee', (req, res) => {
+    const { employee } = req.params;
+    db.query('SELECT * FROM employees WHERE employee_id = ?', [employee], (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
