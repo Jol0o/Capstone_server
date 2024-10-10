@@ -103,7 +103,7 @@ router.get('/search_attendance', async (req, res) => {
     const queryParams = [];
 
     // Search across multiple fields
-    query += ' AND (employee_id LIKE ? OR name LIKE ?)';
+    query += ' AND (employee_id LIKE ? OR attendance_id LIKE ?)';
     const searchPattern = `%${q}%`;
     queryParams.push(searchPattern, searchPattern);
 
@@ -117,6 +117,54 @@ router.get('/search_attendance', async (req, res) => {
 });
 
 
+
+router.get('/search_payroll', async (req, res) => {
+    const { q } = req.query;
+
+    if (!q) {
+        return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
+    }
+
+    let query = 'SELECT * FROM attendance WHERE 1=1';
+    const queryParams = [];
+
+    // Search across multiple fields
+    query += ' AND (employee_id LIKE ? OR payroll_id LIKE ?)';
+    const searchPattern = `%${q}%`;
+    queryParams.push(searchPattern, searchPattern);
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ status: 'error', message: 'Internal server error' });
+        }
+        res.status(200).json({ status: 'ok', data: results });
+    });
+});
+
+router.get('/search_leave_request', async (req, res) => {
+    const { q } = req.query;
+
+    if (!q) {
+        return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
+    }
+
+    let query = 'SELECT * FROM LeaveRequest WHERE 1=1';
+    const queryParams = [];
+
+    // Search across multiple fields
+    query += ' AND (employee_id LIKE ? OR leave_type LIKE ? OR reason LIKE ? OR status LIKE ?)';
+    const searchPattern = `%${q}%`;
+    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ status: 'error', message: 'Internal server error' });
+        }
+        res.status(200).json({ status: 'ok', data: results });
+    });
+});
 
 router.post('/send_email', async (req, res) => {
     const { email, qrcode } = req.body;
