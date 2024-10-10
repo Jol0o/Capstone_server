@@ -92,6 +92,31 @@ router.get('/search_employee', async (req, res) => {
     });
 });
 
+router.get('/search_attendance', async (req, res) => {
+    const { q } = req.query;
+
+    if (!q) {
+        return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
+    }
+
+    let query = 'SELECT * FROM attendance WHERE 1=1';
+    const queryParams = [];
+
+    // Search across multiple fields
+    query += ' AND (employee_id LIKE ? OR name LIKE ?)';
+    const searchPattern = `%${q}%`;
+    queryParams.push(searchPattern, searchPattern);
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ status: 'error', message: 'Internal server error' });
+        }
+        res.status(200).json({ status: 'ok', data: results });
+    });
+});
+
+
 
 router.post('/send_email', async (req, res) => {
     const { email, qrcode } = req.body;
