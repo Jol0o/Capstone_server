@@ -338,6 +338,9 @@ router.get('/employees/:employee', (req, res) => {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else if (result.length > 0) {
+            if (result.length > 0) {
+                delete result[0].password;
+            }
             res.status(200).json({ status: 'ok', data: result });
         } else {
             res.status(404).json({ status: 'not found' });
@@ -353,7 +356,9 @@ router.get('/employees/:id', (req, res) => {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-
+            if (result.length > 0) {
+                delete result[0].password;
+            }
             res.status(200).json({ status: 'ok', data: result });
         }
     });
