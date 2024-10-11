@@ -223,6 +223,7 @@ router.post('/time_in', authMiddleware, async (req, res) => {
     });
 });
 
+
 router.put('/time_out/:id', (req, res) => {
     const { id } = req.params;
     const { time_in } = req.body;
@@ -234,7 +235,7 @@ router.put('/time_out/:id', (req, res) => {
     const now = moment().tz('Asia/Manila');
     const time_out = now.format('hh:mm A'); // Format the time as hh:mm AM/PM
 
-    // Helper function to parse time string in 'HH:MM AM/PM' format
+    // Helper function to parse time string in 'hh:mm A' format
     const parseTime = (timeString) => {
         const [time, modifier] = timeString.split(' ');
         let [hours, minutes] = time.split(':');
@@ -243,19 +244,23 @@ router.put('/time_out/:id', (req, res) => {
             hours = '00';
         }
 
-        if (modifier === 'PM') {
+        if (modifier === 'PM' && hours !== '12') {
             hours = parseInt(hours, 10) + 12;
         }
 
-        const currentDate = new Date().toISOString().split('T')[0];
-        return new Date(`${currentDate}T${hours}:${minutes}:00`);
+        if (modifier === 'AM' && hours === '12') {
+            hours = '00';
+        }
+
+        const currentDate = now.format('YYYY-MM-DD');
+        return moment.tz(`${currentDate} ${hours}:${minutes}`, 'YYYY-MM-DD HH:mm', 'Asia/Manila');
     };
 
     const timeInDate = parseTime(time_in);
     const timeOutDate = now;
 
     // Calculate the difference in milliseconds
-    const diffInMilliseconds = timeOutDate - timeInDate;
+    const diffInMilliseconds = timeOutDate.diff(timeInDate);
 
     // Convert milliseconds to hours
     const diffInHours = diffInMilliseconds / (1000 * 60 * 60);
