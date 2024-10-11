@@ -16,7 +16,7 @@ const sinchClient = new SinchClient({
 });
 
 cron.schedule(
-    "0 15 * * *",
+    "0 * * * *",
     () => {
         console.log("Cron job started"); // Log when the cron job starts
         const currentDate = moment().tz('Asia/Manila');
@@ -33,7 +33,7 @@ cron.schedule(
                         // Do something with row
                         console.log('running cron job')
                         const number = row.phone_number.substring(1);
-                        let totalHours;
+                        let totalHours = 0;
                         const employee_id = row.employee_id; // replace with the actual employee id
                         const month = currentDate.month() + 1; // get the current month
                         const year = currentDate.year(); // get the current year
@@ -49,12 +49,16 @@ cron.schedule(
                         db.query(
                             `SELECT * FROM attendance WHERE employee_id = ? AND MONTH(date) = ? AND YEAR(date) = ?`,
                             [employee_id, month, year],
-                            (err, result) => {
+                            (err, attendanceResult) => {
                                 if (err) {
                                     console.error("Database query error:", err); // Log any database query errors
                                 } else {
-                                    totalHours = result.reduce((total, attendance) => {
-                                        return total + attendance.hours;
+                                    totalHours = attendanceResult.reduce((total, attendance) => {
+                                        console.log(`Attendance record: ${JSON.stringify(attendance)}`); // Log each attendance record
+                                        if (attendance.hours < 0) {
+                                            console.warn(`Negative hours detected for employee_id ${employee_id} on date ${attendance.date}: ${attendance.hours}`);
+                                        }
+                                        return total + Math.max(0, attendance.hours); // Ensure hours are non-negative
                                     }, 0);
 
                                     db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?,?)`, [payroll_id, employee_id, totalHours, row.salary], (err, result) => {
