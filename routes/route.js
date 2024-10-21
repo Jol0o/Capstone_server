@@ -970,7 +970,7 @@ router.post('/leave_request', (req, res) => {
 router.get('/leave_request', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 15;
-    const offset = (page - 1) * limit;
+    const offset = Math.max((page - 1) * limit, 0); // Ensure offset is not negative
 
     const countQuery = 'SELECT COUNT(*) as total FROM leaverequest';
     const dataQuery = `
@@ -981,7 +981,6 @@ router.get('/leave_request', (req, res) => {
         LIMIT ? OFFSET ?
     `;
 
-
     db.query(countQuery, (err, countResult) => {
         if (err) {
             console.error('Error executing count query:', err);
@@ -990,9 +989,7 @@ router.get('/leave_request', (req, res) => {
             const total = countResult[0].total;
             const totalPages = Math.ceil(total / limit);
 
-            // Adjust offset if it exceeds the total number of records
-            const adjustedOffset = Math.min(offset, total - 1);
-            db.query(dataQuery, [limit, adjustedOffset], (err, result) => {
+            db.query(dataQuery, [limit, offset], (err, result) => {
                 if (err) {
                     console.error('Error executing data query:', err);
                     res.status(500).json({ status: 'error', message: 'Database error' });
@@ -1076,7 +1073,7 @@ router.get('/get-users', (req, res) => {
 
         // Adjust the page to not exceed total pages
         const page = Math.min(Math.max(1, parseInt(req.query.page) || 1), totalPages);
-        const offset = (page - 1) * limit;
+        const offset = Math.max(0, (page - 1) * limit); // Ensure offset is not negative
 
         console.log(`Total records: ${total}, Total pages: ${totalPages}, Limit: ${limit}, Offset: ${offset}`);
 
@@ -1178,7 +1175,7 @@ router.delete('/employee-requests/:id', async (req, res) => {
 
 router.post('/employee-requests/:id/approve', [
     check('hierarchy').notEmpty().withMessage('Hierarchy is required'),
-    check('employee_id').isEmail().withMessage('Employee id is required'),
+    check('employee_id').notEmpty().withMessage('Employee id is required'),
     check('department').notEmpty().withMessage('Department is required'),
     check('position').notEmpty().withMessage('Position is required'),
     check('qrcode').notEmpty().withMessage('QR code is required'),
@@ -1214,29 +1211,29 @@ router.post('/employee-requests/:id/approve', [
         // Create the employee record
         const newEmployee = await prisma.employees.create({
             data: {
-                employee_id, // Generate a unique employee ID
+                employee_id,
                 name: employeeRequest.name,
                 email: employeeRequest.email,
                 phone_number: employeeRequest.phone_number,
-                password: employeeRequest.password, // Assuming the password is already hashed
+                password: employeeRequest.password,
                 created_at: new Date(),
-                department: department || 'Default Department', // Use provided department or default
-                position: position || 'Default Position', // Use provided position or default
+                department: department || 'Default Department',
+                position: position || 'Default Position',
                 qrcode,
                 avatar: '',
-                baseSalary: parseInt(baseSalary, 10) || 0, // Convert baseSalary to integer or use default
-                totalSalary: 0, // Use provided total salary or default
-                hierarchy: hierarchy || 'rank & file', // Use provided hierarchy or default
-                day_off: 0, // Use provided day offset or default
+                baseSalary: parseInt(baseSalary, 10) || 0,
+                totalSalary: 0,
+                hierarchy: hierarchy || 'rank & file',
+                day_off: false, // Ensure day_off is a boolean
             }
         });
 
         // Create the user record
         const newUser = await prisma.user.create({
             data: {
-                user_id: newEmployee.employee_id, // Generate a unique user ID
+                user_id: newEmployee.employee_id,
                 email: employeeRequest.email,
-                password: employeeRequest.password, // Assuming the password is already hashed
+                password: employeeRequest.password,
                 employee_id: newEmployee.employee_id
             }
         });
