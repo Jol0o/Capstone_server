@@ -7,13 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Admin {
+model admin {
   id       Int    @id @default(autoincrement())
   email    String @unique
   password String
 }
 
-model Attendance {
+model attendance {
   id           Int     @id @default(autoincrement())
   date         String
   time_in      String
@@ -21,9 +21,10 @@ model Attendance {
   attendance_id String
   employee_id  String
   hours        Int?
-  employee     Employees @relation(fields: [employee_id], references: [employee_id])
+  employee     employees @relation(fields: [employee_id], references: [employee_id])
 }
-model Employees {
+
+model employees {
   id           Int       @id @default(autoincrement())
   employee_id  String    @unique
   name         String
@@ -39,14 +40,15 @@ model Employees {
   password     String
   hierarchy    String    @default("employee") // Provide a default value
   day_off      Boolean?
-  attendance   Attendance[]
-  leaveRequests LeaveRequest[]
-  payrolls     Payroll[]
-  smsNotifications SmsNotification[] @relation("EmployeeRelation")
-  phoneNumbers SmsNotification[] @relation("PhoneNumberRelation")
-  users        User[]
+  attendance   attendance[]
+  leaveRequests leaveRequest[]
+  payrolls     payroll[]
+  smsNotifications smsNotification[] @relation("EmployeeRelation")
+  phoneNumbers smsNotification[] @relation("PhoneNumberRelation")
+  users        user[]
 }
-model LeaveRequest {
+
+model leaveRequest {
   id          Int       @id @default(autoincrement())
   employee_id String?
   leave_type  String
@@ -55,37 +57,37 @@ model LeaveRequest {
   reason      String
   created_at  DateTime  @default(now())
   status      LeaveRequestStatus @default(Pending)
-  employee    Employees? @relation(fields: [employee_id], references: [employee_id])
+  employee    employees? @relation(fields: [employee_id], references: [employee_id])
 }
 
-model Payroll {
+model payroll {
   id           Int     @id @default(autoincrement())
   payroll_id   String?
   employee_id  String
   hours_worked Float
   total_pay    Float
   created_at   DateTime @default(now())
-  employee     Employees @relation(fields: [employee_id], references: [employee_id])
+  employee     employees @relation(fields: [employee_id], references: [employee_id])
 }
 
-model SmsNotification {
+model smsNotification {
   id            Int     @id @default(autoincrement())
   notification_id String
   employee_id   String
   phone_number  String
   message       String
   sent_date     DateTime @default(now())
-  employee      Employees @relation(fields: [employee_id], references: [employee_id], name: "EmployeeRelation")
-  phoneNumber   Employees @relation(fields: [phone_number], references: [phone_number], name: "PhoneNumberRelation")
+  employee      employees @relation(fields: [employee_id], references: [employee_id], name: "EmployeeRelation")
+  phoneNumber   employees @relation(fields: [phone_number], references: [phone_number], name: "PhoneNumberRelation")
 }
 
-model User {
+model user {
   id          Int     @id @default(autoincrement())
   user_id     String  @unique
   email       String  @unique
   password    String
   employee_id String?
-  employee    Employees? @relation(fields: [employee_id], references: [employee_id])
+  employee    employees? @relation(fields: [employee_id], references: [employee_id])
 }
 
 enum RequestStatus {
@@ -94,7 +96,7 @@ enum RequestStatus {
   rejected
 }
 
-model EmployeeRequest {
+model employeeRequest {
   id          Int     @id @default(autoincrement())
   name        String
   email       String  @unique
