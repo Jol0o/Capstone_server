@@ -29,16 +29,15 @@ model employees {
   employee_id  String    @unique
   name         String
   created_at   DateTime  @default(now())
+  salary_date  DateTime
   department   String
   position     String
   qrcode       String
   avatar       String?
   email        String    @unique
   phone_number String    @unique
-  baseSalary   Int       @default(0) // Provide a default value
-  totalSalary  Int       @default(0) // Provide a default value
+  salary       Int
   password     String
-  hierarchy    String    @default("employee") // Provide a default value
   day_off      Boolean?
   attendance   attendance[]
   leaveRequests leaveRequest[]
