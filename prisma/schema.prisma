@@ -23,21 +23,21 @@ model Attendance {
   hours        Int?
   employee     Employees @relation(fields: [employee_id], references: [employee_id])
 }
-
 model Employees {
   id           Int       @id @default(autoincrement())
   employee_id  String    @unique
   name         String
   created_at   DateTime  @default(now())
-  salary_date  DateTime
   department   String
   position     String
   qrcode       String
   avatar       String?
   email        String    @unique
   phone_number String    @unique
-  salary       Int
+  baseSalary   Int       @default(0) // Provide a default value
+  totalSalary  Int       @default(0) // Provide a default value
   password     String
+  hierarchy    String    @default("employee") // Provide a default value
   day_off      Boolean?
   attendance   Attendance[]
   leaveRequests LeaveRequest[]
@@ -46,7 +46,6 @@ model Employees {
   phoneNumbers SmsNotification[] @relation("PhoneNumberRelation")
   users        User[]
 }
-
 model LeaveRequest {
   id          Int       @id @default(autoincrement())
   employee_id String?
@@ -87,6 +86,21 @@ model User {
   password    String
   employee_id String?
   employee    Employees? @relation(fields: [employee_id], references: [employee_id])
+}
+
+enum RequestStatus {
+  pending
+  confirmed
+  rejected
+}
+
+model EmployeeRequest {
+  id          Int     @id @default(autoincrement())
+  name        String
+  email       String  @unique
+  password    String
+  phone_number String @unique
+  status      RequestStatus @default(pending)
 }
 
 enum LeaveRequestStatus {
