@@ -9,7 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const moment = require('moment-timezone');
 
-const leaveRequestStatus = {
+const LeaveRequestStatus = {
     PENDING: 'Pending',
     APPROVED: 'Approved',
     REJECTED: 'Rejected'
@@ -19,17 +19,15 @@ router.get('/hello', (req, res) => {
     res.send({ express: 'Hello From Express' });
 });
 
-
 router.post('/create_employee', [
     check('employee_id').notEmpty().withMessage('Employee ID is required'),
     check('name').notEmpty().withMessage('Name is required'),
     check('email').isEmail().withMessage('Valid email is required'),
-    check('salary_date').notEmpty().withMessage('Salary date is required'),
     check('department').notEmpty().withMessage('Department is required'),
     check('position').notEmpty().withMessage('Position is required'),
     check('qrcode').notEmpty().withMessage('QR code is required'),
     check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
-    check('salary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+    check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Base salary must not start with 0'),
     check('password').notEmpty().withMessage('Password is required'),
 ], async (req, res) => {
     const errors = validationResult(req);
@@ -37,35 +35,63 @@ router.post('/create_employee', [
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password, day_off } = req.body;
+    const { employee_id, name, email, department, position, qrcode, phone_number, baseSalary, password, day_off, avatar, hierarchy } = req.body;
 
-    const query = `INSERT INTO employees (employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password, day_off) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    try {
+        // Check if an employee with the same email or phone number already exists
+        const existingEmployee = await prisma.employees.findFirst({
+            where: {
+                OR: [
+                    { email: email },
+                    { phone_number: phone_number }
+                ]
+            }
+        });
 
-    db.query(query, [employee_id, name, email, salary_date, department, position, qrcode, phone_number, salary, password, day_off], async (err) => {
-        if (err) {
-            if (err.code === 'ER_DUP_ENTRY') {
-                const field = err.sqlMessage.match(/for key '(.+?)'/)[1];
-                const fieldName = field.split('_')[1]; // Assuming the field name is after the first underscore
-                return res.status(400).json({ status: 'error', message: `Duplicate entry detected for ${fieldName}. Please check the ${fieldName} field.` });
-            } else {
-                console.error(err);
-                return res.status(500).json({ status: 'error', message: 'Internal server error' });
-            }
-        } else {
-            try {
-                await sendEmail(email, qrcode);
-                res.status(200).json({ status: 'ok' });
-                if (req.io) {
-                    req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                } else {
-                    console.error('Socket.io instance not found');
-                }
-            } catch (emailErr) {
-                console.error(emailErr);
-                res.status(500).json({ status: 'error', message: 'Failed to send email' });
-            }
+        if (existingEmployee) {
+            return res.status(400).json({ status: 'error', message: 'Email or phone number already exists' });
         }
-    });
+
+        // Hash the password
+        const hashedPassword = await hashPassword(password);
+
+        // Create a new employee
+        const newEmployee = await prisma.employees.create({
+            data: {
+                employee_id,
+                name,
+                email,
+                department,
+                position,
+                qrcode,
+                phone_number,
+                baseSalary: parseInt(baseSalary, 10),
+                totalSalary: 0, // Set total salary to 0 initially
+                password: hashedPassword,
+                hierarchy: hierarchy || 'employee',
+                day_off: day_off || false,
+                avatar: avatar || null
+            }
+        });
+
+        // Send email with QR code
+        await sendEmail(email, qrcode);
+
+        res.status(200).json({ status: 'ok', data: newEmployee });
+        if (req.io) {
+            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+        } else {
+            console.error('Socket.io instance not found');
+        }
+    } catch (err) {
+        if (err.code === 'P2002') { // Prisma unique constraint violation
+            const field = err.meta.target.split('_')[1]; // Assuming the field name is after the first underscore
+            return res.status(400).json({ status: 'error', message: `Duplicate entry detected for ${field}. Please check the ${field} field.` });
+        } else {
+            console.error(err);
+            return res.status(500).json({ status: 'error', message: 'Internal server error' });
+        }
+    }
 });
 
 router.get('/search_employee', async (req, res) => {
@@ -160,12 +186,12 @@ router.get('/search_leave_request', async (req, res) => {
     }
 
     let query = `
-        SELECT leaveRequest.*, employees.name, employees.avatar
-        FROM leaveRequest 
-        INNER JOIN employees ON leaveRequest.employee_id = employees.employee_id
+        SELECT leaverequest.*, employees.name, employees.avatar
+        FROM leaverequest 
+        INNER JOIN employees ON leaverequest.employee_id = employees.employee_id
         WHERE 1=1
-        AND (leaveRequest.employee_id LIKE ? OR leaveRequest.leave_type LIKE ? OR leaveRequest.reason LIKE ? OR leaveRequest.status LIKE ?)
-        ORDER BY leaveRequest.created_at DESC
+        AND (leaverequest.employee_id LIKE ? OR leaverequest.leave_type LIKE ? OR leaverequest.reason LIKE ? OR leaverequest.status LIKE ?)
+        ORDER BY leaverequest.created_at DESC
         LIMIT ? OFFSET ?
     `;
     const queryParams = [];
@@ -373,15 +399,14 @@ router.get('/employees/:id', (req, res) => {
 router.put('/employees/:id', [
     check('name').notEmpty().withMessage('Name is required'),
     check('email').isEmail().withMessage('Valid email is required'),
-    check('salary_date').notEmpty().withMessage('Salary date is required'),
     check('department').notEmpty().withMessage('Department is required'),
     check('position').notEmpty().withMessage('Position is required'),
     check('qrcode').notEmpty().withMessage('QR code is required'),
     check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
-    check('salary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+    check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
 ], async (req, res) => {
     const { id } = req.params;
-    const { name, email, salary_date, department, position, qrcode, phone_number, password, salary, avatar } = req.body;
+    const { name, email, department, position, qrcode, phone_number, password, baseSalary, avatar, hierarchy, day_off } = req.body;
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -392,14 +417,8 @@ router.put('/employees/:id', [
 
     try {
         // Fetch existing employee data
-        const existingEmployee = await new Promise((resolve, reject) => {
-            db.query('SELECT * FROM employees WHERE id = ?', [id], (err, result) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(result[0]);
-                }
-            });
+        const existingEmployee = await prisma.employees.findUnique({
+            where: { id: parseInt(id, 10) }
         });
 
         if (!existingEmployee) {
@@ -409,52 +428,58 @@ router.put('/employees/:id', [
         // Hash password if provided and different from the existing one
         if (password && password !== existingEmployee.password) {
             hashedPassword = await hashPassword(password);
-            db.query('UPDATE user SET password = ? WHERE user_id = ?', [hashedPassword, existingEmployee.employee_id]);
+            await prisma.user.update({
+                where: { user_id: existingEmployee.employee_id },
+                data: { password: hashedPassword }
+            });
         } else {
             hashedPassword = existingEmployee.password;
         }
 
         // Convert salary_date to the correct format
-        const formattedSalaryDate = salary_date ? new Date(salary_date).toISOString().slice(0, 19).replace('T', ' ') : null;
-
         // Update employee data
-        db.query(
-            'UPDATE employees SET name = ?, email = ?, password = ?, salary_date = ?, department = ?, position = ?, phone_number = ?, salary = ?, qrcode = ?, avatar = ? WHERE id = ?',
-            [name, email, hashedPassword, formattedSalaryDate, department, position, phone_number, salary, qrcode, avatar || null, id],
-            (err, result) => {
-                if (err) {
-                    if (err.code === 'ER_DUP_ENTRY') {
-                        const field = err.sqlMessage.match(/for key '(.+?)'/)[1];
-                        const fieldName = field.split('_')[1]; // Assuming the field name is after the first underscore
-                        return res.status(400).json({ status: 'error', message: `Duplicate entry detected for ${fieldName}. Please check the ${fieldName} field.` });
-                    } else {
-                        console.error(err);
-                        return res.status(500).json({ status: 'error', message: 'Internal server error' });
-                    }
-                }
-                // Check if the email has changed and update the user table
-                if (email && email !== existingEmployee.email) {
-                    db.query('UPDATE user SET email = ? WHERE user_id = ?', [email, existingEmployee.employee_id], (err) => {
-                        if (err) {
-                            console.error(err);
-                            return res.status(500).json({ status: 'error' });
-                        }
-                    });
-                }
-
-                res.status(200).json({ status: 'ok', data: result });
-                if (req.io) {
-                    req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                } else {
-                    console.error('Socket.io instance not found');
-                }
+        const updatedEmployee = await prisma.employees.update({
+            where: { id: parseInt(id, 10) },
+            data: {
+                name,
+                email,
+                password: hashedPassword,
+                department,
+                position,
+                phone_number,
+                baseSalary: parseInt(baseSalary, 10),
+                qrcode,
+                avatar: avatar || null,
+                hierarchy: hierarchy || 'employee',
+                day_off: day_off || false
             }
-        );
+        });
+
+        // Check if the email has changed and update the user table
+        if (email && email !== existingEmployee.email) {
+            await prisma.user.update({
+                where: { user_id: existingEmployee.employee_id },
+                data: { email }
+            });
+        }
+
+        res.status(200).json({ status: 'ok', data: updatedEmployee });
+        if (req.io) {
+            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+        } else {
+            console.error('Socket.io instance not found');
+        }
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ status: 'error' });
+        if (err.code === 'P2002') { // Prisma unique constraint violation
+            const field = err.meta.target.split('_')[1]; // Assuming the field name is after the first underscore
+            return res.status(400).json({ status: 'error', message: `Duplicate entry detected for ${field}. Please check the ${field} field.` });
+        } else {
+            console.error(err);
+            return res.status(500).json({ status: 'error', message: 'Internal server error' });
+        }
     }
 });
+
 
 router.delete('/employee/:id', async (req, res) => {
     const { id } = req.params;
@@ -924,7 +949,7 @@ router.post('/leave_request', (req, res) => {
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     if (!leaveType && !startDate && !endDate) return res.status(400).json({ status: 'error', message: 'leaveType, startDate and endDate are required' });
 
-    const query = 'INSERT INTO leaveRequest (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
+    const query = 'INSERT INTO leaverequest (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
     const values = [employee_id, leaveType, new Date(startDate), new Date(endDate), reason];
 
     db.query(query, values, (err, result) => {
@@ -947,12 +972,12 @@ router.get('/leave_request', (req, res) => {
     const limit = parseInt(req.query.limit) || 15;
     const offset = (page - 1) * limit;
 
-    const countQuery = 'SELECT COUNT(*) as total FROM leaveRequest';
+    const countQuery = 'SELECT COUNT(*) as total FROM leaverequest';
     const dataQuery = `
-        SELECT leaveRequest.*, employees.name, employees.avatar
-        FROM leaveRequest 
-        INNER JOIN employees ON leaveRequest.employee_id = employees.employee_id
-        ORDER BY leaveRequest.created_at DESC
+        SELECT leaverequest.*, employees.name, employees.avatar
+        FROM leaverequest 
+        INNER JOIN employees ON leaverequest.employee_id = employees.employee_id
+        ORDER BY leaverequest.created_at DESC
         LIMIT ? OFFSET ?
     `;
 
@@ -990,19 +1015,19 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
     const { status } = req.body;
     console.log('Server-side:', id, req.body);
 
-    // Ensure leaveRequestStatus is defined and contains the expected values
-    const leaveRequestStatus = {
+    // Ensure LeaveRequestStatus is defined and contains the expected values
+    const LeaveRequestStatus = {
         PENDING: 'Pending',
         PROCESS: 'Process',
         APPROVED: 'Approved',
         REJECTED: 'Rejected'
     };
 
-    if (!Object.values(leaveRequestStatus).includes(status)) {
+    if (!Object.values(LeaveRequestStatus).includes(status)) {
         return res.status(400).json({ status: 'error', message: 'Invalid status' });
     }
 
-    const query = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
+    const query = 'UPDATE leaverequest SET status = ? WHERE id = ?';
     const values = [status, id];
 
     db.query(query, values, (err, result) => {
@@ -1024,7 +1049,7 @@ router.get('/user_request', (req, res) => {
     const { employee_id } = req.user
     if (!employee_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
 
-    const q = 'SELECT * FROM leaveRequest WHERE employee_id = ?';
+    const q = 'SELECT * FROM leaverequest WHERE employee_id = ?';
     db.query(q, [employee_id], (err, result) => {
         if (err) {
             console.error(err);
@@ -1095,6 +1120,147 @@ router.get('/test', async (req, res) => {
         res.status(404).json({ status: 'not found' });
     }
 })
+
+router.get('/employee-requests', async (req, res) => {
+    const { page = 1, limit = 10 } = req.query; // Default to page 1 and limit 10
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+
+    try {
+        const totalRequests = await prisma.employeeRequest.count();
+        const totalPages = Math.ceil(totalRequests / limitNumber);
+
+        const employeeRequests = await prisma.employeeRequest.findMany({
+            skip: (pageNumber - 1) * limitNumber,
+            take: limitNumber,
+            orderBy: {
+                id: 'asc'
+            }
+        });
+
+        res.status(200).json({
+            status: 'ok',
+            data: employeeRequests,
+            currentPage: pageNumber,
+            totalPages: totalPages,
+            isLastPage: pageNumber === totalPages
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ status: 'error', message: 'Server error' });
+    }
+});
+
+router.delete('/employee-requests/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const deletedRequest = await prisma.employeeRequest.delete({
+            where: { id: parseInt(id, 10) }
+        });
+        res.status(200).json({
+            status: 'ok',
+            data: deletedRequest
+        });
+        if (req.io) {
+            req.io.emit('employeeRequestUpdate', { message: 'employee Request data updated' });
+        } else {
+            console.error('Socket.io instance not found');
+        }
+    } catch (error) {
+        console.error(error);
+        if (error.code === 'P2025') { // Prisma record not found
+            return res.status(404).json({ status: 'error', message: 'Employee request not found' });
+        }
+        res.status(500).json({ status: 'error', message: 'Server error' });
+    }
+});
+
+router.post('/employee-requests/:id/approve', [
+    check('hierarchy').notEmpty().withMessage('Hierarchy is required'),
+    check('employee_id').isEmail().withMessage('Employee id is required'),
+    check('department').notEmpty().withMessage('Department is required'),
+    check('position').notEmpty().withMessage('Position is required'),
+    check('qrcode').notEmpty().withMessage('QR code is required'),
+    check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+], async (req, res) => {
+    const { id } = req.params;
+    const { department, position, baseSalary, hierarchy, employee_id, qrcode } = req.body;
+
+    // Validate request body
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    console.log(req.body);
+
+    try {
+        // Find the employee request
+        const employeeRequest = await prisma.employeeRequest.findUnique({
+            where: { id: parseInt(id, 10) }
+        });
+
+        if (!employeeRequest) {
+            return res.status(404).json({ status: 'error', message: 'Employee request not found' });
+        }
+
+        // Update the status to confirmed
+        const updatedRequest = await prisma.employeeRequest.update({
+            where: { id: parseInt(id, 10) },
+            data: { status: 'confirmed' }
+        });
+
+        // Create the employee record
+        const newEmployee = await prisma.employees.create({
+            data: {
+                employee_id, // Generate a unique employee ID
+                name: employeeRequest.name,
+                email: employeeRequest.email,
+                phone_number: employeeRequest.phone_number,
+                password: employeeRequest.password, // Assuming the password is already hashed
+                created_at: new Date(),
+                department: department || 'Default Department', // Use provided department or default
+                position: position || 'Default Position', // Use provided position or default
+                qrcode,
+                avatar: '',
+                baseSalary: parseInt(baseSalary, 10) || 0, // Convert baseSalary to integer or use default
+                totalSalary: 0, // Use provided total salary or default
+                hierarchy: hierarchy || 'rank & file', // Use provided hierarchy or default
+                day_off: 0, // Use provided day offset or default
+            }
+        });
+
+        // Create the user record
+        const newUser = await prisma.user.create({
+            data: {
+                user_id: newEmployee.employee_id, // Generate a unique user ID
+                email: employeeRequest.email,
+                password: employeeRequest.password, // Assuming the password is already hashed
+                employee_id: newEmployee.employee_id
+            }
+        });
+
+        if (req.io) {
+            req.io.emit('employeeRequestUpdate', { message: 'Employee request data updated' });
+            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+        } else {
+            console.error('Socket.io instance not found');
+        }
+
+        res.status(200).json({
+            status: 'ok',
+            data: {
+                employeeRequest: updatedRequest,
+                employee: newEmployee,
+                user: newUser
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ status: 'error', message: 'Server error' });
+    }
+});
 
 
 
