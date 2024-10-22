@@ -387,9 +387,6 @@ router.put('/time_out/:id', async (req, res) => {
 });
 
 
-
-
-
 // route for the employee table
 
 router.get('/employees', (req, res) => {
@@ -987,7 +984,11 @@ router.get('/attendance', (req, res) => {
 
 router.get('/attendance/:id', (req, res) => {
     const { id } = req.params;
-    const currentDate = new Date().toISOString().split('T')[0]; // Get current date in yyyy-mm-dd format
+    console.log(id);
+
+    // Get current date in Manila time zone in yyyy-mm-dd format
+    const currentDate = moment().tz('Asia/Manila').format('YYYY-MM-DD');
+    console.log(currentDate);
 
     const query = `SELECT * FROM attendance WHERE employee_id = ? AND DATE(date) = ?`;
 
@@ -996,12 +997,11 @@ router.get('/attendance/:id', (req, res) => {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-            console.log(results)
+            console.log(results);
             res.status(200).json({ status: 'ok', data: results });
         }
     });
 });
-
 
 router.delete('/attendance/:id', (req, res) => {
     const { id } = req.params
