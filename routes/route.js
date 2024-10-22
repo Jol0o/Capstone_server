@@ -249,64 +249,145 @@ router.post('/time_in', authMiddleware, async (req, res) => {
     });
 });
 
-
-router.put('/time_out/:id', (req, res) => {
+router.put('/time_out/:id', async (req, res) => {
     const { id } = req.params;
-    const { time_in } = req.body;
-
-    if (!time_in) {
-        return res.status(400).json({ status: 'error', message: 'time_in is required' });
-    }
-
     const now = moment().tz('Asia/Manila');
-    const time_out = now.format('hh:mm A'); // Format the time as hh:mm AM/PM
+    const time_out = now.format('hh:mm A'); // Getting the current time as time_out
 
-    // Helper function to parse time string in 'hh:mm A' format
-    const parseTime = (timeString) => {
-        const [time, modifier] = timeString.split(' ');
-        let [hours, minutes] = time.split(':');
-
-        if (hours === '12') {
-            hours = '00';
-        }
-
-        if (modifier === 'PM' && hours !== '12') {
-            hours = parseInt(hours, 10) + 12;
-        }
-
-        if (modifier === 'AM' && hours === '12') {
-            hours = '00';
-        }
-
-        const currentDate = now.format('YYYY-MM-DD');
-        return moment.tz(`${currentDate} ${hours}:${minutes}`, 'YYYY-MM-DD HH:mm', 'Asia/Manila');
-    };
-
-    const timeInDate = parseTime(time_in);
-    const timeOutDate = now;
-
-    // Calculate the difference in milliseconds
-    const diffInMilliseconds = timeOutDate.diff(timeInDate);
-
-    // Convert milliseconds to hours
-    const diffInHours = diffInMilliseconds / (1000 * 60 * 60);
-
-    const query = `UPDATE attendance SET time_out = ?, hours = ? WHERE attendance_id = ?`;
-
-    db.query(query, [time_out, diffInHours, id], (err) => {
-        if (err) {
-            console.error(err);
-            res.status(500).json({ status: 'error' });
-        } else {
-            res.status(200).json({ status: 'ok', hoursWorked: diffInHours });
-            if (req.io) {
-                req.io.emit('attendanceUpdate', { message: 'Employee data updated' });
-            } else {
-                console.error('Socket.io instance not found');
+    try {
+        // Fetch the attendance record
+        const attendanceQuery = `
+            SELECT attendance.*, employees.hierarchy, employees.baseSalary
+            FROM attendance
+            JOIN employees ON attendance.employee_id = employees.employee_id
+            WHERE attendance.attendance_id = ?
+        `;
+        db.query(attendanceQuery, [id], (err, attendanceResult) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ status: 'error', message: 'Server error' });
             }
-        }
-    });
+
+            if (attendanceResult.length === 0) {
+                return res.status(404).json({ status: 'error', message: 'Attendance record not found' });
+            }
+
+            const attendanceRecord = attendanceResult[0];
+            const { time_in, hierarchy, baseSalary, time_out: existingTimeOut } = attendanceRecord;
+
+            // Check if time_out already has a value
+            if (existingTimeOut) {
+                return res.status(400).json({ status: 'error', message: 'Time out already set' });
+            }
+
+            // Ensure baseSalary is a valid number
+            if (!baseSalary || isNaN(baseSalary)) {
+                return res.status(400).json({ status: 'error', message: 'Invalid base salary' });
+            }
+
+            // Ensure time_in is a valid value
+            if (!time_in) {
+                return res.status(400).json({ status: 'error', message: 'Missing time_in value' });
+            }
+
+            // Parse time_in and time_out
+            const parseTime = (time, date) => {
+                return moment.tz(`${date} ${time}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+            };
+
+            const timeInDate = parseTime(time_in, attendanceRecord.date);
+            const timeOutDate = parseTime(time_out, now.format('YYYY-MM-DD'));
+            console.log('Time in:', timeInDate);
+            console.log('Time out:', timeOutDate);
+
+            // Ensure time_out is after time_in
+            if (timeOutDate.isBefore(timeInDate)) {
+                timeOutDate.add(1, 'day');
+            }
+
+            // Calculate the difference in milliseconds
+            const diffInMilliseconds = timeOutDate.diff(timeInDate);
+            console.log('Mili', diffInMilliseconds);
+            // Convert milliseconds to hours
+            const diffInHours = diffInMilliseconds / (1000 * 60 * 60);
+            console.log('Hours', diffInHours);
+
+            // Validate the time difference
+            if (isNaN(diffInHours) || diffInHours <= 0) {
+                return res.status(400).json({ status: 'error', message: 'Invalid time difference' });
+            }
+
+            // Calculate salary deduction if hierarchy is "Rank & File"
+            let salaryDeduction = 0;
+            let dailySalary = 0;
+            let overtimePay = 0;
+
+            if (hierarchy === 'Rank & File' && baseSalary) {
+                const hourlyRate = baseSalary / 8;
+                if (diffInHours < 8) {
+                    salaryDeduction = hourlyRate * (8 - diffInHours);
+                    dailySalary = hourlyRate * diffInHours;
+                } else {
+                    const regularHours = 8;
+                    const overtimeHours = diffInHours - regularHours;
+                    dailySalary = hourlyRate * regularHours;
+                    overtimePay = hourlyRate * 1.3 * overtimeHours;
+                }
+            }
+
+            // Ensure all values are valid numbers
+            dailySalary = isNaN(dailySalary) ? 0 : dailySalary;
+            overtimePay = isNaN(overtimePay) ? 0 : overtimePay;
+            salaryDeduction = isNaN(salaryDeduction) ? 0 : salaryDeduction;
+
+            // Update the employee's total salary
+            const updateSalaryQuery = `
+                UPDATE employees
+                SET totalSalary = totalSalary + ?
+                WHERE employee_id = ?
+            `;
+            db.query(updateSalaryQuery, [dailySalary + overtimePay - salaryDeduction, attendanceRecord.employee_id], (err) => {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json({ status: 'error', message: 'Failed to update employee salary' });
+                }
+
+                // Update the attendance record
+                const updateAttendanceQuery = `
+                    UPDATE attendance
+                    SET time_out = ?, hours = ?
+                    WHERE attendance_id = ?
+                `;
+                db.query(updateAttendanceQuery, [time_out, diffInHours, id], (err) => {
+                    if (err) {
+                        console.error(err);
+                        return res.status(500).json({ status: 'error', message: 'Failed to update attendance' });
+                    }
+
+                    res.status(200).json({
+                        status: 'ok',
+                        hoursWorked: diffInHours,
+                        salaryDeduction,
+                        overtimePay,
+                        totalSalary: dailySalary + overtimePay - salaryDeduction
+                    });
+
+                    if (req.io) {
+                        req.io.emit('attendanceUpdate', { message: 'Employee data updated' });
+                    } else {
+                        console.error('Socket.io instance not found');
+                    }
+                });
+            });
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ status: 'error', message: 'Server error' });
+    }
 });
+
+
+
 
 
 // route for the employee table
@@ -485,12 +566,12 @@ router.delete('/employee/:id', async (req, res) => {
     const { id } = req.params;
 
     try {
-        await db.query('DELETE FROM attendance WHERE employee_id = ?', [id]);
-        await db.query('DELETE FROM payroll WHERE employee_id = ?', [id]);
-        await db.query('DELETE FROM smsnotification WHERE employee_id = ?', [id]);
-        await db.query('DELETE FROM employees WHERE employee_id = ?', [id]);
+        db.query('DELETE FROM attendance WHERE employee_id = ?', [id]);
+        db.query('DELETE FROM payroll WHERE employee_id = ?', [id]);
+        db.query('DELETE FROM smsnotification WHERE employee_id = ?', [id]);
+        db.query('DELETE FROM employees WHERE employee_id = ?', [id]);
 
-        await db.query('DELETE FROM user WHERE user_id = ?', [id]);
+        db.query('DELETE FROM user WHERE user_id = ?', [id]);
 
         res.status(200).json({ status: 'ok' });
         if (req.io) {
@@ -1173,33 +1254,40 @@ router.delete('/employee-requests/:id', async (req, res) => {
     }
 });
 
+
+
 router.post('/employee-requests/:id/approve', [
-    check('hierarchy').notEmpty().withMessage('Hierarchy is required'),
-    check('employee_id').notEmpty().withMessage('Employee id is required'),
     check('department').notEmpty().withMessage('Department is required'),
     check('position').notEmpty().withMessage('Position is required'),
-    check('qrcode').notEmpty().withMessage('QR code is required'),
     check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+    check('qrcode').notEmpty().withMessage('QR code is required'),
 ], async (req, res) => {
     const { id } = req.params;
     const { department, position, baseSalary, hierarchy, employee_id, qrcode } = req.body;
 
-    // Validate request body
+    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
     }
 
-    console.log(req.body);
-
     try {
-        // Find the employee request
+        // Fetch the employee request
         const employeeRequest = await prisma.employeeRequest.findUnique({
             where: { id: parseInt(id, 10) }
         });
 
         if (!employeeRequest) {
             return res.status(404).json({ status: 'error', message: 'Employee request not found' });
+        }
+
+        // Check if an employee with the same email already exists
+        const existingEmployee = await prisma.employees.findUnique({
+            where: { email: employeeRequest.email }
+        });
+
+        if (existingEmployee) {
+            return res.status(409).json({ status: 'error', message: 'Employee with this email already exists' });
         }
 
         // Update the status to confirmed
@@ -1254,11 +1342,10 @@ router.post('/employee-requests/:id/approve', [
             }
         });
     } catch (error) {
-        console.error(error);
+        console.error('Error:', error);
         res.status(500).json({ status: 'error', message: 'Server error' });
     }
 });
-
 
 
 module.exports = router;
