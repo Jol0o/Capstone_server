@@ -31,7 +31,7 @@ const io = socketIo(server, {
 });
 
 const corsOptions = {
-    origin: ['https://capstone-system-two.vercel.app', 'https://www.aap-h.com', 'http://localhost:3000'], // Add new origin
+    origin: ['https://capstone-system-two.vercel.app', 'https://www.aap-h.com', 'http://localhost:3000', 'https://gasbee.aap-h.com'], // Add new origin
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true, // Allow cookies to be sent
