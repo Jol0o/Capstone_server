@@ -186,12 +186,12 @@ router.get('/search_leave_request', async (req, res) => {
     }
 
     let query = `
-        SELECT leaverequest.*, employees.name, employees.avatar
-        FROM leaverequest 
-        INNER JOIN employees ON leaverequest.employee_id = employees.employee_id
+        SELECT leaveRequest.*, employees.name, employees.avatar
+        FROM leaveRequest 
+        INNER JOIN employees ON leaveRequest.employee_id = employees.employee_id
         WHERE 1=1
-        AND (leaverequest.employee_id LIKE ? OR leaverequest.leave_type LIKE ? OR leaverequest.reason LIKE ? OR leaverequest.status LIKE ?)
-        ORDER BY leaverequest.created_at DESC
+        AND (leaveRequest.employee_id LIKE ? OR leaveRequest.leave_type LIKE ? OR leaveRequest.reason LIKE ? OR leaveRequest.status LIKE ?)
+        ORDER BY leaveRequest.created_at DESC
         LIMIT ? OFFSET ?
     `;
     const queryParams = [];
@@ -1030,7 +1030,7 @@ router.post('/leave_request', (req, res) => {
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
     if (!leaveType && !startDate && !endDate) return res.status(400).json({ status: 'error', message: 'leaveType, startDate and endDate are required' });
 
-    const query = 'INSERT INTO leaverequest (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
+    const query = 'INSERT INTO leaveRequest (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
     const values = [employee_id, leaveType, new Date(startDate), new Date(endDate), reason];
 
     db.query(query, values, (err, result) => {
@@ -1053,12 +1053,12 @@ router.get('/leave_request', (req, res) => {
     const limit = parseInt(req.query.limit) || 15;
     const offset = Math.max((page - 1) * limit, 0); // Ensure offset is not negative
 
-    const countQuery = 'SELECT COUNT(*) as total FROM leaverequest';
+    const countQuery = 'SELECT COUNT(*) as total FROM leaveRequest';
     const dataQuery = `
-        SELECT leaverequest.*, employees.name, employees.avatar
-        FROM leaverequest 
-        INNER JOIN employees ON leaverequest.employee_id = employees.employee_id
-        ORDER BY leaverequest.created_at DESC
+        SELECT leaveRequest.*, employees.name, employees.avatar
+        FROM leaveRequest 
+        INNER JOIN employees ON leaveRequest.employee_id = employees.employee_id
+        ORDER BY leaveRequest.created_at DESC
         LIMIT ? OFFSET ?
     `;
 
@@ -1105,7 +1105,7 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
         return res.status(400).json({ status: 'error', message: 'Invalid status' });
     }
 
-    const query = 'UPDATE leaverequest SET status = ? WHERE id = ?';
+    const query = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
     const values = [status, id];
 
     db.query(query, values, (err, result) => {
@@ -1127,7 +1127,7 @@ router.get('/user_request', (req, res) => {
     const { employee_id } = req.user
     if (!employee_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
 
-    const q = 'SELECT * FROM leaverequest WHERE employee_id = ?';
+    const q = 'SELECT * FROM leaveRequest WHERE employee_id = ?';
     db.query(q, [employee_id], (err, result) => {
         if (err) {
             console.error(err);
