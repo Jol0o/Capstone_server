@@ -1023,15 +1023,53 @@ router.delete('/attendance/:id', (req, res) => {
 
 
 //Leave request route
-router.post('/leave_request', (req, res) => {
-    const { leaveType, startDate, endDate, reason } = req.body;
-    const { employee_id } = req.user
+router.post('/leave_request', [
+    check('leaveType').notEmpty().withMessage('Leave type is required'),
+    check('reason').notEmpty().withMessage('Reason is required'),
+    check('daysRequested').isInt({ min: 1 }).withMessage('Days requested must be at least 1'),
+    check('department').notEmpty().withMessage('Department is required'),
+    check('distributionCopy').isObject().withMessage('Distribution copy must be an object'),
+    check('email').isEmail().withMessage('Valid email is required'),
+    check('inclusiveDates').notEmpty().withMessage('Inclusive dates are required').isISO8601().withMessage('Inclusive dates must be a valid date'),
+    check('name').notEmpty().withMessage('Name is required').matches(/^[a-zA-Z\s.]+$/).withMessage('Name must not contain special characters except for periods'),
+    check('personToTakeover').notEmpty().withMessage('Person to take over is required'),
+    check('position').notEmpty().withMessage('Position is required'),
+    check('requestedBy').notEmpty().withMessage('Requested by is required'),
+    check('supportingDocument').notEmpty().withMessage('Supporting document is required'),
+    check('toDate').notEmpty().withMessage('To date is required').isISO8601().withMessage('To date must be a valid date')
+], (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    const {
+        leaveType,
+        reason,
+        daysRequested,
+        department,
+        distributionCopy,
+        email,
+        inclusiveDates,
+        name,
+        personToTakeover,
+        position,
+        requestedBy,
+        supportingDocument,
+        toDate
+    } = req.body;
+    const { employee_id } = req.user;
 
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
-    if (!leaveType && !startDate && !endDate) return res.status(400).json({ status: 'error', message: 'leaveType, startDate and endDate are required' });
 
-    const query = 'INSERT INTO leaveRequest (employee_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)';
-    const values = [employee_id, leaveType, new Date(startDate), new Date(endDate), reason];
+    const query = `
+        INSERT INTO leaveRequest (
+            employee_id, leave_type, reason, days_requested, department, distribution_copy, email, inclusive_dates, name, person_to_takeover, position, requested_by, supporting_document, to_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
+    `;
+    const values = [
+        employee_id, leaveType, reason, daysRequested, department, JSON.stringify(distributionCopy), email, new Date(inclusiveDates), name, personToTakeover, position, requestedBy, supportingDocument, new Date(toDate)
+    ];
 
     db.query(query, values, (err, result) => {
         if (err) {

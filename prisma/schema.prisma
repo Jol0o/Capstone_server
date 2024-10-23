@@ -49,15 +49,24 @@ model employees {
 }
 
 model leaveRequest {
-  id          Int       @id @default(autoincrement())
-  employee_id String?
-  leave_type  String
-  start_date  DateTime
-  end_date    DateTime
-  reason      String
-  created_at  DateTime  @default(now())
-  status      LeaveRequestStatus @default(Pending)
-  employee    employees? @relation(fields: [employee_id], references: [employee_id])
+  id                  Int       @id @default(autoincrement())
+  employee_id         String?
+  leave_type          String
+  reason              String
+  days_requested      Int
+  department          String
+  distribution_copy   Json
+  email               String
+  inclusive_dates     DateTime
+  name                String
+  person_to_takeover  String
+  position            String
+  requested_by        String
+  supporting_document String
+  to_date             DateTime
+  created_at          DateTime  @default(now())
+  status              LeaveRequestStatus @default(Pending)
+  employee            employees? @relation(fields: [employee_id], references: [employee_id])
 }
 
 model payroll {
