@@ -795,12 +795,12 @@ router.get('/off', (req, res) => {
     const query = `
         SELECT 
             employees.name,
-            leaverequest.inclusive_dates,
-            leaverequest.to_date
+            leaveRequest.inclusive_dates,
+            leaveRequest.to_date
         FROM 
             employees
         JOIN 
-            leaverequest ON employees.employee_id = leaverequest.employee_id
+            leaveRequest ON employees.employee_id = leaveRequest.employee_id
         WHERE 
             employees.day_off = true
     `;
