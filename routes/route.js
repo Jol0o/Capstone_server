@@ -794,9 +794,13 @@ router.get('/absent_employees', (req, res) => {
 router.get('/off', (req, res) => {
     const query = `
         SELECT 
-            employees.*
+            employees.name,
+            leaverequest.inclusive_dates,
+            leaverequest.to_date
         FROM 
             employees
+        JOIN 
+            leaverequest ON employees.employee_id = leaverequest.employee_id
         WHERE 
             employees.day_off = true
     `;
@@ -809,7 +813,7 @@ router.get('/off', (req, res) => {
             res.status(200).json({ status: 'ok', data: result });
         }
     });
-})
+});
 
 
 // get the monthly attendance
