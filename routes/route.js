@@ -1247,7 +1247,7 @@ router.get('/employee-requests', async (req, res) => {
         const totalPages = Math.ceil(totalRequests / limitNumber);
 
         const employeeRequests = await prisma.employeeRequest.findMany({
-            skip: (pageNumber - 1) * limitNumber,
+            skip: (pageNumber - 1) * limitNumber || 0,
             take: limitNumber,
             orderBy: {
                 id: 'asc'
