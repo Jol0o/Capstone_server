@@ -7,7 +7,7 @@ const authMiddleware = require('./middleware/auth.js');
 const authRouter = require('./routes/auth');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
-require('./scheduler.js');
+require('./cron/scheduler.js');
 
 const app = express();
 const server = http.createServer(app);

@@ -1,5 +1,5 @@
 const cron = require("node-cron");
-const db = require("./db");
+const db = require("../db");
 const { SinchClient } = require("@sinch/sdk-core");
 const moment = require('moment-timezone');
 require("dotenv").config();
