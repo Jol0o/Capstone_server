@@ -10,12 +10,12 @@ if (!db) {
 
 
 cron.schedule(
-    "0 * * * *",
+    "*/10 * * * *",
     () => {
         const currentDate = moment().tz('Asia/Manila').format('YYYY-MM-DD');
         console.log(`Checking for leave requests on ${currentDate}`);
 
-        const q = 'SELECT * FROM leaverequest WHERE inclusive_dates = ?'
+        const q = 'SELECT * FROM leaveRequest WHERE inclusive_dates = ?'
         db.query(q, [currentDate], (err, result) => {
             if (err) {
                 console.error("Database query error:", err);
@@ -36,7 +36,7 @@ cron.schedule(
         })
 
         console.log('Starting scheduled task to check on employees end off');
-        const q2 = 'SELECT * FROM leaverequest WHERE to_date = ?'
+        const q2 = 'SELECT * FROM leaveRequest WHERE to_date = ?'
         db.query(q2, [currentDate], (err, result) => {
             if (err) {
                 console.error("Database query error:", err);
