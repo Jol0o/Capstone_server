@@ -10,7 +10,7 @@ if (!db) {
 
 
 cron.schedule(
-    "*/10 * * * *",
+    "0 * * * *",
     () => {
         const currentDate = moment().tz('Asia/Manila').format('YYYY-MM-DD');
         console.log(`Checking for leave requests on ${currentDate}`);
