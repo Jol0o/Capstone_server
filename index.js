@@ -8,6 +8,7 @@ const authRouter = require('./routes/auth');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
 require('./cron/scheduler.js');
+require('./cron/scheduleOffEmployeeCheck.js');
 
 const app = express();
 const server = http.createServer(app);
