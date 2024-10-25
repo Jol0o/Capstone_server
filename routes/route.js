@@ -754,7 +754,8 @@ router.get('/absent_employees', (req, res) => {
     const query = `
         SELECT 
             (SELECT COUNT(*) FROM employees LEFT JOIN attendance ON employees.employee_id = attendance.employee_id AND DATE(attendance.date) = CURDATE() WHERE attendance.employee_id IS NULL AND employees.day_off = false) as count_today,
-            (SELECT COUNT(*) FROM employees LEFT JOIN attendance ON employees.employee_id = attendance.employee_id AND DATE(attendance.date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) WHERE attendance.employee_id IS NULL AND employees.day_off = false) as count_yesterday
+            (SELECT COUNT(*) FROM employees LEFT JOIN attendance ON employees.employee_id = attendance.employee_id AND DATE(attendance.date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) WHERE attendance.employee_id IS NULL AND employees.day_off = false) as count_yesterday,
+            (SELECT GROUP_CONCAT(employees.name SEPARATOR ', ') FROM employees LEFT JOIN attendance ON employees.employee_id = attendance.employee_id AND DATE(attendance.date) = CURDATE() WHERE attendance.employee_id IS NULL AND employees.day_off = false) as absent_today
     `;
 
     db.query(query, (err, result) => {
@@ -764,9 +765,26 @@ router.get('/absent_employees', (req, res) => {
         } else {
             if (result.length > 0) {
                 const difference = result[0].count_today - result[0].count_yesterday;
-                res.status(200).json({ status: 'ok', data: { today: result[0].count_today, yesterday: result[0].count_yesterday, difference: difference } });
+                const absentToday = result[0].absent_today ? result[0].absent_today.split(', ') : [];
+                res.status(200).json({
+                    status: 'ok',
+                    data: {
+                        today: result[0].count_today,
+                        yesterday: result[0].count_yesterday,
+                        difference: difference,
+                        absentToday: absentToday
+                    }
+                });
             } else {
-                res.status(200).json({ status: 'ok', data: { today: 0, yesterday: 0, difference: 0 } });
+                res.status(200).json({
+                    status: 'ok',
+                    data: {
+                        today: 0,
+                        yesterday: 0,
+                        difference: 0,
+                        absentToday: []
+                    }
+                });
             }
         }
     });
