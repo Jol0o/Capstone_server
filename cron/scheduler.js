@@ -64,7 +64,7 @@ cron.schedule(
                                     const manegerialValue = [payroll_id, employee_id, totalHours, row.baseSalary];
 
                                     // Assuming there is a condition to determine which value to use
-                                    const isManagerial = row.hierarchy === 'Managerial' || row.hierarchy === "Supervisory"; // Example condition
+                                    const isManagerial = row.hierarchy === "Manegerial" || row.hierarchy === "Supervisory"; // Example condition
 
                                     const value = isManagerial ? manegerialValue : rnfValue;
 
