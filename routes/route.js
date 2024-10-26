@@ -873,19 +873,37 @@ router.get('/payroll', (req, res) => {
     const limit = parseInt(req.query.limit) || 15;
     const offset = (page - 1) * limit;
 
-    const query = `
+    const countQuery = 'SELECT COUNT(*) as total FROM payroll';
+    const dataQuery = `
         SELECT payroll.*, employees.name, employees.avatar
         FROM payroll 
         INNER JOIN employees ON payroll.employee_id = employees.employee_id
         LIMIT ? OFFSET ?
     `;
 
-    db.query(query, [limit, offset], (err, result) => {
+    db.query(countQuery, (err, countResult) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-            res.status(200).json({ status: 'ok', data: result });
+            const total = countResult[0].total;
+            const totalPages = Math.ceil(total / limit);
+
+            db.query(dataQuery, [limit, offset], (err, dataResult) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ status: 'error' });
+                } else {
+                    res.status(200).json({
+                        status: 'ok',
+                        data: dataResult,
+                        currentPage: page,
+                        totalPages: totalPages,
+                        isLastPage: page === totalPages,
+                        total
+                    });
+                }
+            });
         }
     });
 });
