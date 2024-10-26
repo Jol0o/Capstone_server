@@ -15,8 +15,9 @@ const sinchClient = new SinchClient({
     keySecret: process.env.ACCESSSECRET,
 });
 
+//  "* 16 5,20 * *",
 cron.schedule(
-    "* 16 5,20 * *",
+    '*/5 * * * *',
     () => {
         console.log("Cron job started"); // Log when the cron job starts
         const currentDate = moment().tz('Asia/Manila');
