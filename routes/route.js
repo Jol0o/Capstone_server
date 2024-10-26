@@ -568,7 +568,7 @@ router.delete('/employee/:id', async (req, res) => {
         db.query('DELETE FROM smsnotification WHERE employee_id = ?', [id]);
         db.query('DELETE FROM employees WHERE employee_id = ?', [id]);
 
-        db.query('DELETE FROM user WHERE user_id = ?', [id]);
+        db.query('DELETE FROM user WHERE employee_id = ?', [id]);
 
         res.status(200).json({ status: 'ok' });
         if (req.io) {
@@ -710,12 +710,12 @@ router.get('/late_employees', (req, res) => {
 router.get('/early_departures', (req, res) => {
     const query = `
         SELECT 
-            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '19:00:00' AND DATE(date) = CURDATE() THEN 1 END) AS count_today,
-            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '19:00:00' AND DATE(date) = CURDATE() - INTERVAL 1 DAY THEN 1 END) AS count_yesterday
+            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '19:00:00' AND DATE(date) = CURDATE() AND time_out != '' THEN 1 END) AS count_today,
+            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '19:00:00' AND DATE(date) = CURDATE() - INTERVAL 1 DAY AND time_out != '' THEN 1 END) AS count_yesterday
         FROM 
             attendance
         WHERE 
-            DATE(date) = CURDATE() OR DATE(date) = CURDATE() - INTERVAL 1 DAY;
+            (DATE(date) = CURDATE() OR DATE(date) = CURDATE() - INTERVAL 1 DAY) AND time_out != '';
     `;
 
     db.query(query, (err, result) => {
@@ -743,11 +743,9 @@ router.get('/early_departures', (req, res) => {
                     }
                 });
             }
-
         }
     });
 });
-
 
 //get the latest absents employees
 router.get('/absent_employees', (req, res) => {
@@ -1351,9 +1349,8 @@ router.post('/employee-requests/:id/approve', [
         }
 
         // Update the status to confirmed
-        const updatedRequest = await prisma.employeeRequest.update({
-            where: { id: parseInt(id, 10) },
-            data: { status: 'confirmed' }
+        const deletedRequest = await prisma.employeeRequest.delete({
+            where: { id: parseInt(id, 10) }
         });
 
         // Create the employee record

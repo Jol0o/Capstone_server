@@ -16,15 +16,14 @@ const sinchClient = new SinchClient({
 });
 
 cron.schedule(
-    "0 12 * * *",
+    "*/10 * * * *",
     () => {
         console.log("Cron job started"); // Log when the cron job starts
         const currentDate = moment().tz('Asia/Manila');
         const currentDay = currentDate.date(); // Get current day
 
         db.query(
-            "SELECT *, DAY(salary_date) as salary_date FROM employees WHERE DAY(salary_date) = ?",
-            [currentDay],
+            "SELECT * FROM employees",
             (err, result) => {
                 if (err) {
                     console.error("Database query error:", err); // Log any database query errors
@@ -34,9 +33,9 @@ cron.schedule(
                         console.log('running cron job')
                         const number = row.phone_number.substring(1);
                         let totalHours = 0;
-                        const employee_id = row.employee_id; // replace with the actual employee id
-                        const month = currentDate.month() + 1; // get the current month
-                        const year = currentDate.year(); // get the current year
+                        const employee_id = row.employee_id;
+                        const month = currentDate.month() + 1;
+                        const year = currentDate.year();
                         function generateUUID() {
                             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
                                 const r = (Math.random() * 16) | 0,
@@ -61,7 +60,7 @@ cron.schedule(
                                         return total + Math.max(0, attendance.hours); // Ensure hours are non-negative
                                     }, 0);
 
-                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?,?)`, [payroll_id, employee_id, totalHours, row.salary], (err, result) => {
+                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?,?)`, [payroll_id, employee_id, totalHours, row.totalSalary], (err, result) => {
                                         if (err) {
                                             console.error(err);
                                         } else {
@@ -70,28 +69,28 @@ cron.schedule(
                                     });
 
                                     console.log(number);
-                                    const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.salary} working hours ${totalHours}.`;
+                                    const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.totalSalary} working hours ${totalHours}.`;
                                     console.log(message);
-                                    // const run = async () => {
-                                    //     const response = await sinchClient.sms.batches.send({
-                                    //         sendSMSRequestBody: {
-                                    //             to: [
-                                    //                 "63" + number
-                                    //             ],
-                                    //             from: process.env.SINCHNUMBER,
-                                    //             body: "This is a test message using the Sinch Node.js SDK."
-                                    //         }
-                                    //     });
-                                    //     console.log(JSON.stringify(response));
-                                    // db.query(`INSERT INTO sms_notifications (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
-                                    //     if (err) {
-                                    //         console.error(err);
-                                    //     } else {
-                                    //         console.log(result);
-                                    //     }
-                                    // });
-                                    // }
-                                    // run(); // Call the function
+                                    const run = async () => {
+                                        const response = await sinchClient.sms.batches.send({
+                                            sendSMSRequestBody: {
+                                                to: [
+                                                    "63" + number
+                                                ],
+                                                from: process.env.SINCHNUMBER,
+                                                body: "This is a test message using the Sinch Node.js SDK."
+                                            }
+                                        });
+                                        console.log(JSON.stringify(response));
+                                        db.query(`INSERT INTO sms_notifications (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
+                                            if (err) {
+                                                console.error(err);
+                                            } else {
+                                                console.log(result);
+                                            }
+                                        });
+                                    }
+                                    run(); // Call the function
                                 }
                             }
                         );
