@@ -17,7 +17,7 @@ const sinchClient = new SinchClient({
 
 //  "* 16 5,20 * *",
 cron.schedule(
-    '*/5 * * * *',
+    "* 16 5,20 * *",
     () => {
         console.log("Cron job started"); // Log when the cron job starts
         const currentDate = moment().tz('Asia/Manila');
