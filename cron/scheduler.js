@@ -60,7 +60,15 @@ cron.schedule(
                                         return total + Math.max(0, attendance.hours); // Ensure hours are non-negative
                                     }, 0);
 
-                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked , total_pay) VALUES (?,?, ?,?)`, [payroll_id, employee_id, totalHours, row.totalSalary], (err, result) => {
+                                    const rnfValue = [payroll_id, employee_id, totalHours, row.totalSalary];
+                                    const manegerialValue = [payroll_id, employee_id, totalHours, row.baseSalary];
+
+                                    // Assuming there is a condition to determine which value to use
+                                    const isManagerial = row.hierarchy === 'Managerial' || row.hierarchy === "Supervisory"; // Example condition
+
+                                    const value = isManagerial ? manegerialValue : rnfValue;
+
+                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay) VALUES (?,?,?,?)`, value, (err, result) => {
                                         if (err) {
                                             console.error(err);
                                         } else {
