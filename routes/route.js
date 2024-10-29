@@ -1422,5 +1422,80 @@ router.post('/employee-requests/:id/approve', [
     }
 });
 
+router.get('/admins', (req, res) => {
+    const limit = Math.max(1, parseInt(req.query.limit) || 15); // Ensure limit is at least 1
+
+    db.query('SELECT COUNT(*) as total FROM admin', (err, countResult) => {
+        if (err) {
+            console.error('Error executing count query:', err);
+            return res.status(500).json({ status: 'error', message: 'Database error' });
+        }
+
+        const total = countResult[0].total;
+        const totalPages = Math.ceil(total / limit);
+
+        // Adjust the page to not exceed total pages
+        const page = Math.min(Math.max(1, parseInt(req.query.page) || 1), totalPages);
+        const offset = Math.max(0, (page - 1) * limit); // Ensure offset is not negative
+
+        console.log(`Total records: ${total}, Total pages: ${totalPages}, Limit: ${limit}, Offset: ${offset}`);
+
+        db.query('SELECT * FROM admin LIMIT ? OFFSET ?', [limit, offset], (err, results) => {
+            if (err) {
+                console.error('Error executing data query:', err);
+                return res.status(500).json({ status: 'error', message: 'Database error' });
+            }
+
+            res.status(200).json({
+                status: 'ok',
+                data: results,
+                currentPage: page,
+                totalPages: totalPages,
+                isLastPage: page === totalPages
+            });
+        });
+    });
+});
+
+router.put('/admin/:id', [
+    check('email').isEmail().withMessage('Invalid email address'),
+    check('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { email, password } = req.body;
+    if (!id) return res.status(404).json({ message: 'Id is required' });
+    const hashedPassword = await hashPassword(password);
+
+    const q = 'UPDATE admin SET email = ?, password = ? WHERE id = ?';
+
+    db.query(q, [email, hashedPassword, id], (err) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        } else {
+            return res.status(200).json({ message: 'Successfully updated admin account!' });
+        }
+    });
+});
+
+router.delete('/admin/:id', (req, res) => {
+    const { id } = req.params;
+
+    if (!id) return res.status(404).json({ message: 'Id is required' });
+
+    const q = 'DELETE FROM admin WHERE id = ?';
+
+    db.query(q, [id], (err) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        } else {
+            return res.status(200).json({ message: 'Successfully deleted admin account!' });
+        }
+    });
+});
 
 module.exports = router;

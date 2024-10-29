@@ -129,6 +129,8 @@ router.post('/admin/register', [
 
     const { email, password } = req.body;
 
+    console.log(email)
+
     const hashedPassword = await hashPassword(password);
 
     db.query(
