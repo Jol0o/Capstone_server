@@ -1009,16 +1009,82 @@ router.get('/attendances', (req, res) => {
 });
 
 router.get('/attendance', (req, res) => {
-    db.query('SELECT * FROM attendance', (err, result) => {
+    const query = `
+        SELECT 
+            employee_id, 
+            date, 
+            time_in,
+            DAYNAME(date) as day 
+        FROM 
+            attendance
+        ORDER BY 
+            employee_id, date
+    `;
+
+    db.query(query, (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-            console.error(result);
-            res.status(200).json({ status: 'ok', data: result });
+            const attendanceData = [];
+            const employeeAttendance = {};
+
+            // Group attendance records by employee_id
+            result.forEach(record => {
+                if (!employeeAttendance[record.employee_id]) {
+                    employeeAttendance[record.employee_id] = [];
+                }
+                employeeAttendance[record.employee_id].push(record);
+            });
+
+            // Process each employee's attendance
+            Object.keys(employeeAttendance).forEach(employee_id => {
+                const records = employeeAttendance[employee_id];
+                let previousDate = null;
+
+                records.forEach(record => {
+                    const currentDate = moment(record.date).tz('Asia/Manila');
+                    const timeIn = moment.tz(record.time_in, 'hh:mm A', 'Asia/Manila');
+                    const eightAM = moment.tz(record.date + ' 08:00 AM', 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+
+                    let status = 'absent';
+                    if (record.time_in) {
+                        if (timeIn.isBefore(eightAM)) {
+                            status = 'present';
+                        } else {
+                            status = 'late';
+                        }
+                    }
+
+                    // Check for gaps in dates
+                    if (previousDate) {
+                        const diffDays = currentDate.diff(previousDate, 'days');
+                        for (let i = 1; i < diffDays; i++) {
+                            const missingDate = previousDate.clone().add(i, 'days');
+                            attendanceData.push({
+                                employee_id: employee_id,
+                                date: missingDate.format('YYYY-MM-DD'),
+                                day: missingDate.format('dddd'),
+                                status: 'absent'
+                            });
+                        }
+                    }
+
+                    attendanceData.push({
+                        employee_id: record.employee_id,
+                        date: record.date,
+                        day: record.day,
+                        status: status
+                    });
+
+                    previousDate = currentDate;
+                });
+            });
+
+            res.status(200).json({ status: 'ok', data: attendanceData });
         }
     });
-})
+});
 
 router.get('/attendance/:id', (req, res) => {
     const { id } = req.params;
