@@ -1008,7 +1008,7 @@ router.get('/attendances', (req, res) => {
     });
 });
 
-router.get('/attendance/:id', (req, res) => {
+router.get('/user-attendance/:id', (req, res) => {
     const { id } = req.params;
     const query = `
         SELECT 
