@@ -1,8 +1,9 @@
-import cron from 'node-cron';
-import db from '../db';
-import dotenv from 'dotenv';
+const cron = require("node-cron");
+const db = require("../db");
+const { SinchClient } = require("@sinch/sdk-core");
+const moment = require('moment-timezone');
+require("dotenv").config();
 
-dotenv.config();
 
 if (!db) {
     console.error('Database connection not established');
