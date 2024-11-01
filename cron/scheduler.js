@@ -61,7 +61,7 @@ cron.schedule(
                                         return total + Math.max(0, attendance.hours); // Ensure hours are non-negative
                                     }, 0);
 
-                                    const rnfValue = [payroll_id, employee_id, totalHours, row.totalSalary];
+                                    const rnfValue = [payroll_id, employee_id, totalHours, row.monthSalary];
                                     const manegerialValue = [payroll_id, employee_id, totalHours, row.baseSalary];
 
                                     // Assuming there is a condition to determine which value to use
@@ -78,7 +78,7 @@ cron.schedule(
                                     });
 
                                     console.log(number);
-                                    const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.totalSalary} working hours ${totalHours}.`;
+                                    const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.monthSalary} working hours ${totalHours}.`;
                                     console.log(message);
                                     const run = async () => {
                                         const response = await sinchClient.sms.batches.send({

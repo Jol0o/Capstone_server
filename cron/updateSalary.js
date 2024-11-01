@@ -1,7 +1,8 @@
-const cron = require('node-cron');
-const db = require('../db');
-const moment = require('moment-timezone');
-require('dotenv').config();
+import cron from 'node-cron';
+import db from '../db';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 if (!db) {
     console.error('Database connection not established');
@@ -11,7 +12,10 @@ if (!db) {
 const resetEmployeeSalaries = () => {
     const query = `
         UPDATE employees
-        SET totalSalary = monthSalary
+        SET monthSalary = CASE
+            WHEN hierarchy = 'Rank & File' THEN totalSalary
+            ELSE baseSalary
+        END
     `;
 
     db.query(query, (err, result) => {
