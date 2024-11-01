@@ -1007,7 +1007,6 @@ router.get('/attendances', (req, res) => {
         }
     });
 });
-
 router.get('/user-attendance/:id', (req, res) => {
     const { id } = req.params;
     const query = `
@@ -1034,8 +1033,8 @@ router.get('/user-attendance/:id', (req, res) => {
 
             result.forEach(record => {
                 const currentDate = moment(record.date).tz('Asia/Manila');
-                const timeIn = moment.tz(record.time_in, 'hh:mm A', 'Asia/Manila');
-                const eightAM = moment.tz(record.date + ' 08:00 AM', 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+                const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+                const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
 
                 let status = 'absent';
                 if (record.time_in) {
@@ -1466,7 +1465,6 @@ router.post('/employee-requests/:id/approve', [
         res.status(200).json({
             status: 'ok',
             data: {
-                employeeRequest: updatedRequest,
                 employee: newEmployee,
                 user: newUser
             }

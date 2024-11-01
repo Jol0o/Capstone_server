@@ -13,6 +13,7 @@ cron.schedule(
     "0 * * * *",
     () => {
         const currentDate = moment().tz('Asia/Manila').format('YYYY-MM-DD');
+        const yesterdayDate = moment().tz('Asia/Manila').subtract(1, 'days').format('YYYY-MM-DD');
         console.log(`Checking for leave requests on ${currentDate}`);
 
         const q = 'SELECT * FROM leaveRequest WHERE inclusive_dates = ?'
@@ -37,7 +38,7 @@ cron.schedule(
 
         console.log('Starting scheduled task to check on employees end off');
         const q2 = 'SELECT * FROM leaveRequest WHERE to_date = ?'
-        db.query(q2, [currentDate], (err, result) => {
+        db.query(q2, [yesterdayDate], (err, result) => {
             if (err) {
                 console.error("Database query error:", err);
             } else {
