@@ -91,7 +91,7 @@ cron.schedule(
                                             }
                                         });
                                         console.log(JSON.stringify(response));
-                                        db.query(`INSERT INTO sms_notifications (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
+                                        db.query(`INSERT INTO smsnotifications (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
                                             if (err) {
                                                 console.error(err);
                                             } else {

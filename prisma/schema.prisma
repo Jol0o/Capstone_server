@@ -37,6 +37,7 @@ model employees {
   phone_number String    @unique
   baseSalary   Int       @default(0) // Provide a default value
   totalSalary  Int       @default(0) // Provide a default value
+  monthSalary  Int       @default(0) // Provide a default value
   password     String
   hierarchy    String    @default("employee") // Provide a default value
   day_off      Boolean?

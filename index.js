@@ -9,6 +9,7 @@ const cookieParser = require('cookie-parser');
 const session = require('express-session');
 require('./cron/scheduler.js');
 require('./cron/scheduleOffEmployeeCheck.js');
+require('./cron/updateSalary.js');
 
 const app = express();
 const server = http.createServer(app);
