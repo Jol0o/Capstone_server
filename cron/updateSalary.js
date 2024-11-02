@@ -16,7 +16,8 @@ const resetEmployeeSalaries = () => {
         SET monthSalary = CASE
             WHEN hierarchy = 'Rank & File' THEN totalSalary
             ELSE baseSalary
-        END
+        END,
+        totalSalary = 0
     `;
 
     db.query(query, (err, result) => {
@@ -29,7 +30,7 @@ const resetEmployeeSalaries = () => {
 };
 
 // Schedule the task to run on the 15th and 30th of each month at midnight
-cron.schedule('0 0 15,30 * *', () => {
+cron.schedule("0 16 15,30 * *", () => {
     console.log('Running salary reset task...');
     resetEmployeeSalaries();
 }, {

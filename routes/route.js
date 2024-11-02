@@ -1006,21 +1006,28 @@ router.get('/attendances', (req, res) => {
             });
         }
     });
-});
-router.get('/user-attendance/:id', (req, res) => {
+}); router.get('/user-attendance/:id', (req, res) => {
     const { id } = req.params;
     const query = `
         SELECT 
-            employee_id, 
-            date, 
-            time_in,
-            DAYNAME(date) as day 
+            attendance.employee_id, 
+            attendance.date, 
+            attendance.time_in,
+            attendance.time_out,
+            DAYNAME(attendance.date) as day,
+            leaveRequest.inclusive_dates,
+            leaveRequest.to_date,
+            leaveRequest.status
         FROM 
             attendance
+        LEFT JOIN 
+            leaveRequest ON attendance.employee_id = leaveRequest.employee_id 
+            AND attendance.date BETWEEN leaveRequest.inclusive_dates AND leaveRequest.to_date
+            AND leaveRequest.status = 'Approved'
         WHERE 
-            employee_id = ?
+            attendance.employee_id = ?
         ORDER BY 
-            date
+            attendance.date
     `;
 
     db.query(query, [id], (err, result) => {
@@ -1045,6 +1052,15 @@ router.get('/user-attendance/:id', (req, res) => {
                     }
                 }
 
+                // Check if the user is off duty
+                if (record.inclusive_dates && record.to_date) {
+                    const inclusiveDates = moment(record.inclusive_dates).tz('Asia/Manila');
+                    const toDate = moment(record.to_date).tz('Asia/Manila');
+                    if (currentDate.isBetween(inclusiveDates, toDate, 'day', '[]')) {
+                        status = 'off duty';
+                    }
+                }
+
                 // Check for gaps in dates
                 if (previousDate) {
                     const diffDays = currentDate.diff(previousDate, 'days');
@@ -1063,7 +1079,9 @@ router.get('/user-attendance/:id', (req, res) => {
                     employee_id: record.employee_id,
                     date: record.date,
                     day: record.day,
-                    status: status
+                    status: status,
+                    time_in: record.time_in,
+                    time_out: record.time_out
                 });
 
                 previousDate = currentDate;
