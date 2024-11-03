@@ -8,6 +8,7 @@ const authMiddleware = require('../middleware/auth');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const moment = require('moment-timezone');
+const { Parser } = require('json2csv');
 
 const LeaveRequestStatus = {
     PENDING: 'Pending',
@@ -1271,6 +1272,20 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
     });
 });
 
+router.delete('/leave_request/:id', (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ status: 'error', message: 'Leave request ID is required' });
+
+    db.query('DELETE FROM leaveRequest WHERE id = ?', [id], (err) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ status: 'error', message: 'Database error' });
+        }
+
+        res.status(200).json({ status: 'ok', message: 'Leave request deleted successfully' });
+    });
+})
+
 router.get('/user_request', (req, res) => {
     const { employee_id } = req.user
     if (!employee_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
@@ -1565,6 +1580,32 @@ router.delete('/admin/:id', (req, res) => {
             return res.status(500).json({ message: 'Database error', error: err });
         } else {
             return res.status(200).json({ message: 'Successfully deleted admin account!' });
+        }
+    });
+});
+
+router.get('/export/:table', (req, res) => {
+    const { table } = req.params;
+
+    if (!table) return res.status(400).json({ message: 'Table name is required' });
+
+    const q = `SELECT * FROM ??`;
+
+    db.query(q, [table], (err, result) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        } else {
+            if (result.length === 0) {
+                return res.status(404).json({ message: 'No data found' });
+            }
+
+            const fields = Object.keys(result[0]);
+            const json2csvParser = new Parser({ fields });
+            const csv = json2csvParser.parse(result);
+
+            res.header('Content-Type', 'text/csv');
+            res.attachment(`${table}.csv`);
+            return res.send(csv);
         }
     });
 });
