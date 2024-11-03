@@ -120,4 +120,5 @@ enum LeaveRequestStatus {
   Process
   Approved
   Rejected
+  Done
 }

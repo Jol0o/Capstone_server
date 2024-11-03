@@ -61,6 +61,16 @@ const checkAndUpdateDayOff = () => {
                             console.error("Database query error:", err);
                         } else {
                             console.log(`Employee ${row.employee_id} has been checked on`);
+
+                            // Update the leave request status to Done
+                            const qUpdateStatus = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
+                            db.query(qUpdateStatus, ['Done', row.id], (err, result) => {
+                                if (err) {
+                                    console.error("Database query error:", err);
+                                } else {
+                                    console.log(`Leave request ${row.id} status updated to Done`);
+                                }
+                            });
                         }
                     });
                 });
