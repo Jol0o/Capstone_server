@@ -250,6 +250,7 @@ router.post('/time_in', authMiddleware, async (req, res) => {
     });
 });
 
+
 router.put('/time_out/:id', async (req, res) => {
     const { id } = req.params;
     const now = moment().tz('Asia/Manila');
@@ -298,20 +299,15 @@ router.put('/time_out/:id', async (req, res) => {
 
             const timeInDate = parseTime(time_in, attendanceRecord.date);
             const timeOutDate = parseTime(time_out, now.format('YYYY-MM-DD'));
-            console.log('Time in:', timeInDate);
-            console.log('Time out:', timeOutDate);
 
-            // Ensure time_out is after time_in
+            // Ensure time_out is after time_in, adjust if necessary
             if (timeOutDate.isBefore(timeInDate)) {
                 timeOutDate.add(1, 'day');
             }
 
             // Calculate the difference in milliseconds
             const diffInMilliseconds = timeOutDate.diff(timeInDate);
-            console.log('Mili', diffInMilliseconds);
-            // Convert milliseconds to hours
             const diffInHours = diffInMilliseconds / (1000 * 60 * 60);
-            console.log('Hours', diffInHours);
 
             // Validate the time difference
             if (isNaN(diffInHours) || diffInHours <= 0) {
@@ -325,14 +321,21 @@ router.put('/time_out/:id', async (req, res) => {
 
             if (hierarchy === 'Rank & File' && baseSalary) {
                 const hourlyRate = baseSalary / 8;
-                if (diffInHours < 8) {
+
+                // Avoid negative deduction for short work durations
+                if (diffInHours < 8 && diffInHours >= 1) {
                     salaryDeduction = hourlyRate * (8 - diffInHours);
                     dailySalary = hourlyRate * diffInHours;
-                } else {
+                } else if (diffInHours >= 8) {
                     const regularHours = 8;
                     const overtimeHours = diffInHours - regularHours;
                     dailySalary = hourlyRate * regularHours;
                     overtimePay = hourlyRate * 1.3 * overtimeHours;
+                } else {
+                    // Edge case: very short work duration, handle as zero salary earned
+                    dailySalary = 0;
+                    salaryDeduction = 0;
+                    overtimePay = 0;
                 }
             }
 
@@ -386,6 +389,7 @@ router.put('/time_out/:id', async (req, res) => {
         res.status(500).json({ status: 'error', message: 'Server error' });
     }
 });
+
 
 
 // route for the employee table
@@ -1007,7 +1011,9 @@ router.get('/attendances', (req, res) => {
             });
         }
     });
-}); router.get('/user-attendance/:id', (req, res) => {
+});
+
+router.get('/user-attendance/:id', (req, res) => {
     const { id } = req.params;
     const query = `
         SELECT 
@@ -1487,6 +1493,8 @@ router.post('/employee-requests/:id/approve', [
                 employee_id: newEmployee.employee_id
             }
         });
+
+        await sendEmail(newEmployee.email, qrcode)
 
         if (req.io) {
             req.io.emit('employeeRequestUpdate', { message: 'Employee request data updated' });
