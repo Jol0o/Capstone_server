@@ -1016,37 +1016,73 @@ router.get('/attendances', (req, res) => {
 
 router.get('/user-attendance/:id', (req, res) => {
     const { id } = req.params;
-    const query = `
+
+    const attendanceQuery = `
         SELECT 
             attendance.employee_id, 
             attendance.date, 
             attendance.time_in,
             attendance.time_out,
-            DAYNAME(attendance.date) as day,
-            leaveRequest.inclusive_dates,
-            leaveRequest.to_date,
-            leaveRequest.status
+            DAYNAME(attendance.date) as day
         FROM 
             attendance
-        LEFT JOIN 
-            leaveRequest ON attendance.employee_id = leaveRequest.employee_id 
-            AND attendance.date BETWEEN leaveRequest.inclusive_dates AND leaveRequest.to_date
-            AND leaveRequest.status IN ('Done', 'Approved')
         WHERE 
             attendance.employee_id = ?
         ORDER BY 
             attendance.date
     `;
 
-    db.query(query, [id], (err, result) => {
+    const leaveRequestQuery = `
+        SELECT 
+            inclusive_dates, 
+            to_date, 
+            status 
+        FROM 
+            leaveRequest 
+        WHERE 
+            employee_id = ? 
+            AND status IN ('Done', 'Approved')
+    `;
+
+    db.query(attendanceQuery, [id], (err, attendanceResult) => {
         if (err) {
             console.error(err);
-            res.status(500).json({ status: 'error' });
-        } else {
+            return res.status(500).json({ status: 'error' });
+        }
+
+        db.query(leaveRequestQuery, [id], (err, leaveRequestResult) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ status: 'error' });
+            }
+
             const attendanceData = [];
             let previousDate = null;
+            const today = moment().tz('Asia/Manila').startOf('day');
 
-            result.forEach(record => {
+            // Map leave dates with their inclusive date ranges for easier checking
+            const leaveDates = leaveRequestResult.flatMap(leave => {
+                let datesInRange = [];
+                let start = moment(leave.inclusive_dates).tz('Asia/Manila');
+                const end = moment(leave.to_date).tz('Asia/Manila');
+                while (start.isSameOrBefore(end, 'day')) {
+                    datesInRange.push({
+                        date: start.clone().format('YYYY-MM-DD'),
+                        inclusive_dates: leave.inclusive_dates,
+                        to_date: leave.to_date,
+                        status: 'off duty'
+                    });
+                    start.add(1, 'day');
+                }
+                return datesInRange;
+            });
+
+            // Function to get leave data for a specific date
+            const getLeaveDataForDate = (date) => {
+                return leaveDates.find(leave => leave.date === date);
+            };
+
+            attendanceResult.forEach(record => {
                 const currentDate = moment(record.date).tz('Asia/Manila');
                 const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
                 const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
@@ -1054,22 +1090,14 @@ router.get('/user-attendance/:id', (req, res) => {
                 // Initialize status as "absent"
                 let status = 'absent';
 
-                // Check if the employee is on leave and mark as "off duty" if they are
-                if (record.inclusive_dates && record.to_date) {
-                    const inclusiveDates = moment(record.inclusive_dates).tz('Asia/Manila');
-                    const toDate = moment(record.to_date).tz('Asia/Manila');
-                    if (currentDate.isBetween(inclusiveDates, toDate, 'day', '[]')) {
-                        status = 'off duty';
-                    }
-                }
+                // Check if the current date falls within any leave request period
+                const leaveData = getLeaveDataForDate(currentDate.format('YYYY-MM-DD'));
 
-                // If the employee has a time-in record, adjust status accordingly
-                if (status !== 'off duty' && record.time_in) {
-                    if (timeIn.isBefore(eightAM)) {
-                        status = 'present';
-                    } else {
-                        status = 'late';
-                    }
+                if (leaveData) {
+                    status = 'off duty';
+                } else if (record.time_in) {
+                    // If the employee has a time-in record, adjust status accordingly
+                    status = timeIn.isBefore(eightAM) ? 'present' : 'late';
                 }
 
                 // Check for gaps in dates and add "absent" status for missing dates
@@ -1077,11 +1105,15 @@ router.get('/user-attendance/:id', (req, res) => {
                     const diffDays = currentDate.diff(previousDate, 'days');
                     for (let i = 1; i < diffDays; i++) {
                         const missingDate = previousDate.clone().add(i, 'days');
+                        const missingLeaveData = getLeaveDataForDate(missingDate.format('YYYY-MM-DD'));
                         attendanceData.push({
                             employee_id: record.employee_id,
                             date: missingDate.format('YYYY-MM-DD'),
                             day: missingDate.format('dddd'),
-                            status: 'absent'
+                            status: missingLeaveData ? 'off duty' : 'absent',
+                            inclusive_dates: missingLeaveData ? missingLeaveData.inclusive_dates : null,
+                            to_date: missingLeaveData ? missingLeaveData.to_date : null,
+                            leave_status: missingLeaveData ? missingLeaveData.status : null
                         });
                     }
                 }
@@ -1093,16 +1125,38 @@ router.get('/user-attendance/:id', (req, res) => {
                     day: record.day,
                     status: status,
                     time_in: record.time_in,
-                    time_out: record.time_out
+                    time_out: record.time_out,
+                    inclusive_dates: leaveData ? leaveData.inclusive_dates : null,
+                    to_date: leaveData ? leaveData.to_date : null,
+                    leave_status: leaveData ? leaveData.status : null
                 });
 
                 previousDate = currentDate;
             });
 
+            // Add "absent" entries for dates after the last attendance record up to today
+            if (previousDate) {
+                let nextDate = previousDate.clone().add(1, 'days');
+                while (nextDate.isBefore(today) || nextDate.isSame(today, 'day')) {
+                    const nextLeaveData = getLeaveDataForDate(nextDate.format('YYYY-MM-DD'));
+                    attendanceData.push({
+                        employee_id: id,
+                        date: nextDate.format('YYYY-MM-DD'),
+                        day: nextDate.format('dddd'),
+                        status: nextLeaveData ? 'off duty' : 'absent',
+                        inclusive_dates: nextLeaveData ? nextLeaveData.inclusive_dates : null,
+                        to_date: nextLeaveData ? nextLeaveData.to_date : null,
+                        leave_status: nextLeaveData ? nextLeaveData.status : null
+                    });
+                    nextDate.add(1, 'days');
+                }
+            }
+
             res.status(200).json({ status: 'ok', data: attendanceData });
-        }
+        });
     });
 });
+
 
 
 
