@@ -1030,7 +1030,7 @@ router.get('/user-attendance/:id', (req, res) => {
         LEFT JOIN 
             leaveRequest ON attendance.employee_id = leaveRequest.employee_id 
             AND attendance.date BETWEEN leaveRequest.inclusive_dates AND leaveRequest.to_date
-            AND leaveRequest.status = 'Approved'
+            AND leaveRequest.status IN ('Done', 'Approved')
         WHERE 
             attendance.employee_id = ?
         ORDER BY 
