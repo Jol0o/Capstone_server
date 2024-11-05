@@ -1012,6 +1012,8 @@ router.get('/attendances', (req, res) => {
         }
     });
 });
+
+
 router.get('/user-attendance/:id', (req, res) => {
     const { id } = req.params;
     const query = `
@@ -1028,6 +1030,7 @@ router.get('/user-attendance/:id', (req, res) => {
             attendance
         LEFT JOIN 
             leaveRequest ON attendance.employee_id = leaveRequest.employee_id 
+            AND attendance.date BETWEEN leaveRequest.inclusive_dates AND leaveRequest.to_date
             AND leaveRequest.status IN ('Done', 'Approved')
         WHERE 
             attendance.employee_id = ?
@@ -1039,62 +1042,68 @@ router.get('/user-attendance/:id', (req, res) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
-            return;
-        }
+        } else {
+            const attendanceData = [];
+            let previousDate = null;
 
-        const attendanceData = [];
-        let previousDate = null;
+            result.forEach(record => {
+                const currentDate = moment(record.date).tz('Asia/Manila');
+                const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+                const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
 
-        result.forEach(record => {
-            const currentDate = moment(record.date).tz('Asia/Manila');
-            const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
-            const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+                // Initialize status as "absent"
+                let status = 'absent';
 
-            let status = 'absent';
-            if (record.time_in) {
-                status = timeIn.isBefore(eightAM) ? 'present' : 'late';
-            }
-
-            // Check if the user is off duty based on leaveRequest dates
-            if (record.inclusive_dates && record.to_date) {
-                const inclusiveDates = moment(record.inclusive_dates).tz('Asia/Manila');
-                const toDate = moment(record.to_date).tz('Asia/Manila');
-
-                if (currentDate.isBetween(inclusiveDates, toDate, 'day', '[]')) { // Inclusive mode for both bounds
-                    status = 'off duty';
+                // Check if the employee is on leave and mark as "off duty" if they are
+                if (record.inclusive_dates && record.to_date) {
+                    const inclusiveDates = moment(record.inclusive_dates).tz('Asia/Manila');
+                    const toDate = moment(record.to_date).tz('Asia/Manila');
+                    if (currentDate.isBetween(inclusiveDates, toDate, 'day', '[]')) {
+                        status = 'off duty';
+                    }
                 }
-            }
 
-            // Check for gaps in dates and add missing records as absent
-            if (previousDate) {
-                const diffDays = currentDate.diff(previousDate, 'days');
-                for (let i = 1; i < diffDays; i++) {
-                    const missingDate = previousDate.clone().add(i, 'days');
-                    attendanceData.push({
-                        employee_id: record.employee_id,
-                        date: missingDate.format('YYYY-MM-DD'),
-                        day: missingDate.format('dddd'),
-                        status: 'absent'
-                    });
+                // If the employee has a time-in record, adjust status accordingly
+                if (status !== 'off duty' && record.time_in) {
+                    if (timeIn.isBefore(eightAM)) {
+                        status = 'present';
+                    } else {
+                        status = 'late';
+                    }
                 }
-            }
 
-            // Push current record
-            attendanceData.push({
-                employee_id: record.employee_id,
-                date: record.date,
-                day: record.day,
-                status: status,
-                time_in: record.time_in,
-                time_out: record.time_out
+                // Check for gaps in dates and add "absent" status for missing dates
+                if (previousDate) {
+                    const diffDays = currentDate.diff(previousDate, 'days');
+                    for (let i = 1; i < diffDays; i++) {
+                        const missingDate = previousDate.clone().add(i, 'days');
+                        attendanceData.push({
+                            employee_id: record.employee_id,
+                            date: missingDate.format('YYYY-MM-DD'),
+                            day: missingDate.format('dddd'),
+                            status: 'absent'
+                        });
+                    }
+                }
+
+                // Add the current record with determined status
+                attendanceData.push({
+                    employee_id: record.employee_id,
+                    date: record.date,
+                    day: record.day,
+                    status: status,
+                    time_in: record.time_in,
+                    time_out: record.time_out
+                });
+
+                previousDate = currentDate;
             });
 
-            previousDate = currentDate;
-        });
-
-        res.status(200).json({ status: 'ok', data: attendanceData });
+            res.status(200).json({ status: 'ok', data: attendanceData });
+        }
     });
 });
+
 
 
 
