@@ -15,23 +15,21 @@ const sinchClient = new SinchClient({
     keySecret: process.env.ACCESSSECRET,
 });
 
-//  "* 16 5,20 * *",
 cron.schedule(
-    "* 16 5,20 * *",
+    "*/10 * * * *",
     () => {
-        console.log("Cron job started"); // Log when the cron job starts
+        console.log("Cron job started");
         const currentDate = moment().tz('Asia/Manila');
-        const currentDay = currentDate.date(); // Get current day
+        const currentDay = currentDate.date();
 
         db.query(
             "SELECT * FROM employees",
             (err, result) => {
                 if (err) {
-                    console.error("Database query error:", err); // Log any database query errors
+                    console.error("Database query error:", err);
                 } else {
                     result.forEach((row) => {
-                        // Do something with row
-                        console.log('running cron job')
+                        console.log('running cron job');
                         const number = row.phone_number.substring(1);
                         let totalHours = 0;
                         const employee_id = row.employee_id;
@@ -51,55 +49,66 @@ cron.schedule(
                             [employee_id, month, year],
                             (err, attendanceResult) => {
                                 if (err) {
-                                    console.error("Database query error:", err); // Log any database query errors
+                                    console.error("Database query error:", err);
                                 } else {
                                     totalHours = attendanceResult.reduce((total, attendance) => {
-                                        console.log(`Attendance record: ${JSON.stringify(attendance)}`); // Log each attendance record
+                                        console.log(`Attendance record: ${JSON.stringify(attendance)}`);
                                         if (attendance.hours < 0) {
                                             console.warn(`Negative hours detected for employee_id ${employee_id} on date ${attendance.date}: ${attendance.hours}`);
                                         }
-                                        return total + Math.max(0, attendance.hours); // Ensure hours are non-negative
+                                        return total + Math.max(0, attendance.hours);
                                     }, 0);
 
                                     const rnfValue = [payroll_id, employee_id, totalHours, row.monthSalary];
                                     const manegerialValue = [payroll_id, employee_id, totalHours, row.baseSalary];
-
-                                    // Assuming there is a condition to determine which value to use
-                                    const isManagerial = row.hierarchy === "Manegerial" || row.hierarchy === "Supervisor"; // Example condition
-
+                                    const isManagerial = row.hierarchy === "Manegerial" || row.hierarchy === "Supervisor";
                                     const value = isManagerial ? manegerialValue : rnfValue;
 
-                                    db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay) VALUES (?,?,?,?)`, value, (err, result) => {
-                                        if (err) {
-                                            console.error(err);
-                                        } else {
-                                            console.log(result);
-                                        }
-                                    });
-
-                                    console.log(number);
-                                    const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.monthSalary} working hours ${totalHours}.`;
-                                    console.log(message);
-                                    const run = async () => {
-                                        const response = await sinchClient.sms.batches.send({
-                                            sendSMSRequestBody: {
-                                                to: [
-                                                    "63" + number
-                                                ],
-                                                from: process.env.SINCHNUMBER,
-                                                body: "This is a test message using the Sinch Node.js SDK."
-                                            }
-                                        });
-                                        console.log(JSON.stringify(response));
-                                        db.query(`INSERT INTO smsnotifications (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
+                                    // Check if payroll already exists for today
+                                    db.query(
+                                        `SELECT * FROM payroll WHERE employee_id = ? AND DATE(created_at) = CURDATE()`,
+                                        [employee_id],
+                                        (err, payrollResult) => {
                                             if (err) {
-                                                console.error(err);
+                                                console.error("Database query error:", err);
+                                            } else if (payrollResult.length === 0) {
+                                                // No payroll entry for today, proceed with insertion
+                                                db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay) VALUES (?,?,?,?)`, value, (err, result) => {
+                                                    if (err) {
+                                                        console.error(err);
+                                                    } else {
+                                                        console.log(result);
+                                                    }
+                                                });
+
+                                                console.log(number);
+                                                const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.monthSalary} working hours ${totalHours}.`;
+                                                console.log(message);
+                                                const run = async () => {
+                                                    const response = await sinchClient.sms.batches.send({
+                                                        sendSMSRequestBody: {
+                                                            to: [
+                                                                "63" + number
+                                                            ],
+                                                            from: process.env.SINCHNUMBER,
+                                                            body: "This is a test message using the Sinch Node.js SDK."
+                                                        }
+                                                    });
+                                                    console.log(JSON.stringify(response));
+                                                    db.query(`INSERT INTO smsnotifications (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
+                                                        if (err) {
+                                                            console.error(err);
+                                                        } else {
+                                                            console.log(result);
+                                                        }
+                                                    });
+                                                }
+                                                run();
                                             } else {
-                                                console.log(result);
+                                                console.log(`Payroll already processed for employee_id ${employee_id} today.`);
                                             }
-                                        });
-                                    }
-                                    run(); // Call the function
+                                        }
+                                    );
                                 }
                             }
                         );
