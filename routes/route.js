@@ -9,6 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const moment = require('moment-timezone');
 const { Parser } = require('json2csv');
+const processPayroll = require('../cron/scheduler');
 
 const LeaveRequestStatus = {
     PENDING: 'Pending',
@@ -1678,6 +1679,19 @@ router.get('/export/:table', (req, res) => {
             return res.send(csv);
         }
     });
+});
+
+
+router.post('/run-payroll', async (req, res) => {
+    console.log('Running payroll');
+    try {
+        const response = await processPayroll();
+        console.log(response);
+        return res.status(200).json({ status: 'Success' })
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: err.message });
+    }
 });
 
 module.exports = router;
