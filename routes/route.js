@@ -10,6 +10,7 @@ const prisma = new PrismaClient();
 const moment = require('moment-timezone');
 const { Parser } = require('json2csv');
 const processPayroll = require('../cron/scheduler');
+const getHolidays = require('../utils/const');
 
 const LeaveRequestStatus = {
     PENDING: 'Pending',
@@ -179,7 +180,6 @@ router.get('/search_payroll', async (req, res) => {
     });
 });
 
-
 router.get('/search_leave_request', async (req, res) => {
     const { q, limit = 10, offset = 0 } = req.query;
 
@@ -258,6 +258,10 @@ router.put('/time_out/:id', async (req, res) => {
     const time_out = now.format('hh:mm A'); // Getting the current time as time_out
 
     try {
+        // Fetch holidays for the current year and country
+        const holidays = await getHolidays('2024', 'ph').then(holidays => console.log(holidays)).catch(error => console.error(error)); // 'PH' for the Philippines
+        const isHoliday = holidays.some(holiday => moment(holiday.date.iso).isSame(now, 'day'));
+
         // Fetch the attendance record
         const attendanceQuery = `
             SELECT attendance.*, employees.hierarchy, employees.baseSalary
@@ -337,6 +341,11 @@ router.put('/time_out/:id', async (req, res) => {
                     dailySalary = 0;
                     salaryDeduction = 0;
                     overtimePay = 0;
+                }
+
+                // Apply holiday pay if it's a holiday
+                if (isHoliday) {
+                    dailySalary *= 2; // Example: double pay on holidays
                 }
             }
 
@@ -1159,6 +1168,170 @@ router.get('/user-attendance/:id', (req, res) => {
 });
 
 
+router.get('/monthly-attendance', (req, res) => {
+    const currentMonth = moment().tz('Asia/Manila').month() + 1; // Get current month (1-12)
+    const currentYear = moment().tz('Asia/Manila').year(); // Get current year
+
+    const attendanceQuery = `
+        SELECT 
+            attendance.employee_id, 
+            employees.name,
+            attendance.date, 
+            attendance.time_in,
+            attendance.time_out,
+            DAYNAME(attendance.date) as day
+        FROM 
+            attendance
+        INNER JOIN 
+            employees ON attendance.employee_id = employees.employee_id
+        WHERE 
+            MONTH(attendance.date) = ? AND YEAR(attendance.date) = ?
+        ORDER BY 
+            attendance.date
+    `;
+
+    const leaveRequestQuery = `
+        SELECT 
+            employee_id,
+            inclusive_dates, 
+            to_date, 
+            status 
+        FROM 
+            leaveRequest 
+        WHERE 
+            status IN ('Done', 'Approved')
+    `;
+
+    db.query(attendanceQuery, [currentMonth, currentYear], (err, attendanceResult) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ status: 'error' });
+        }
+
+        db.query(leaveRequestQuery, (err, leaveRequestResult) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ status: 'error' });
+            }
+
+            const attendanceData = [];
+            const today = moment().tz('Asia/Manila').startOf('day');
+
+            // Map leave dates with their inclusive date ranges for easier checking
+            const leaveDates = leaveRequestResult.flatMap(leave => {
+                let datesInRange = [];
+                let start = moment(leave.inclusive_dates).tz('Asia/Manila');
+                const end = moment(leave.to_date).tz('Asia/Manila');
+                while (start.isSameOrBefore(end, 'day')) {
+                    datesInRange.push({
+                        employee_id: leave.employee_id,
+                        date: start.clone().format('YYYY-MM-DD'),
+                        inclusive_dates: leave.inclusive_dates,
+                        to_date: leave.to_date,
+                        status: 'off duty'
+                    });
+                    start.add(1, 'day');
+                }
+                return datesInRange;
+            });
+
+            // Function to get leave data for a specific date and employee
+            const getLeaveDataForDate = (employee_id, date) => {
+                return leaveDates.find(leave => leave.employee_id === employee_id && leave.date === date);
+            };
+
+            const employeeAttendanceMap = {};
+
+            attendanceResult.forEach(record => {
+                const employee_id = record.employee_id;
+                if (!employeeAttendanceMap[employee_id]) {
+                    employeeAttendanceMap[employee_id] = {
+                        previousDate: null,
+                        records: []
+                    };
+                }
+
+                const currentDate = moment(record.date).tz('Asia/Manila');
+                const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+                const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+
+                // Initialize status as "absent"
+                let status = 'absent';
+
+                // Check if the current date falls within any leave request period
+                const leaveData = getLeaveDataForDate(employee_id, currentDate.format('YYYY-MM-DD'));
+
+                if (leaveData) {
+                    status = 'off duty';
+                } else if (record.time_in) {
+                    // If the employee has a time-in record, adjust status accordingly
+                    status = timeIn.isBefore(eightAM) ? 'present' : 'late';
+                }
+
+                // Check for gaps in dates and add "absent" status for missing dates
+                const previousDate = employeeAttendanceMap[employee_id].previousDate;
+                if (previousDate) {
+                    const diffDays = currentDate.diff(previousDate, 'days');
+                    for (let i = 1; i < diffDays; i++) {
+                        const missingDate = previousDate.clone().add(i, 'days');
+                        const missingLeaveData = getLeaveDataForDate(employee_id, missingDate.format('YYYY-MM-DD'));
+                        employeeAttendanceMap[employee_id].records.push({
+                            employee_id: record.employee_id,
+                            name: record.name,
+                            date: missingDate.format('YYYY-MM-DD'),
+                            day: missingDate.format('dddd'),
+                            status: missingLeaveData ? 'off duty' : 'absent',
+                            inclusive_dates: missingLeaveData ? missingLeaveData.inclusive_dates : null,
+                            to_date: missingLeaveData ? missingLeaveData.to_date : null,
+                            leave_status: missingLeaveData ? missingLeaveData.status : null
+                        });
+                    }
+                }
+
+                // Add the current record with determined status
+                employeeAttendanceMap[employee_id].records.push({
+                    employee_id: record.employee_id,
+                    name: record.name,
+                    date: record.date,
+                    day: record.day,
+                    status: status,
+                    time_in: record.time_in,
+                    time_out: record.time_out,
+                    inclusive_dates: leaveData ? leaveData.inclusive_dates : null,
+                    to_date: leaveData ? leaveData.to_date : null,
+                    leave_status: leaveData ? leaveData.status : null
+                });
+
+                employeeAttendanceMap[employee_id].previousDate = currentDate;
+            });
+
+            // Add "absent" entries for dates after the last attendance record up to today
+            Object.keys(employeeAttendanceMap).forEach(employee_id => {
+                const { previousDate, records } = employeeAttendanceMap[employee_id];
+                if (previousDate) {
+                    let nextDate = previousDate.clone().add(1, 'days');
+                    while (nextDate.isBefore(today) || nextDate.isSame(today, 'day')) {
+                        const nextLeaveData = getLeaveDataForDate(employee_id, nextDate.format('YYYY-MM-DD'));
+                        records.push({
+                            employee_id: employee_id,
+                            name: records[0].name,
+                            date: nextDate.format('YYYY-MM-DD'),
+                            day: nextDate.format('dddd'),
+                            status: nextLeaveData ? 'off duty' : 'absent',
+                            inclusive_dates: nextLeaveData ? nextLeaveData.inclusive_dates : null,
+                            to_date: nextLeaveData ? nextLeaveData.to_date : null,
+                            leave_status: nextLeaveData ? nextLeaveData.status : null
+                        });
+                        nextDate.add(1, 'day');
+                    }
+                }
+                attendanceData.push(...records);
+            });
+
+            res.status(200).json({ status: 'ok', data: attendanceData });
+        });
+    });
+});
 
 
 

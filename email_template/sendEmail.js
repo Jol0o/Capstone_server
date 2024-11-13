@@ -12,7 +12,10 @@ async function sendEmail(email, qrcode, message, type = 'welcome') {
         auth: {
             user: process.env.EMAIL,
             pass: process.env.APP_PASSWORD, // Use app password if 2FA is enabled
-        },
+        }, tls: {
+            // Do not fail on invalid certs
+            rejectUnauthorized: false
+        }
     });
 
     // Render the EJS template

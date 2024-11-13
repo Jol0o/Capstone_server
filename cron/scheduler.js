@@ -9,11 +9,13 @@ if (!db) {
     process.exit(1);
 }
 
+
 const sinchClient = new SinchClient({
     projectId: process.env.PROJECTID,
     keyId: process.env.ACCESSKEY,
     keySecret: process.env.ACCESSSECRET,
 });
+
 function processPayroll() {
     console.log("Payroll processing started");
     const currentDate = moment().tz('Asia/Manila');
@@ -58,7 +60,7 @@ function processPayroll() {
 
                                 const rnfValue = [payroll_id, employee_id, totalHours, row.monthSalary];
                                 const manegerialValue = [payroll_id, employee_id, totalHours, row.baseSalary];
-                                const isManagerial = row.hierarchy === "Manegerial" || row.hierarchy === "Supervisor";
+                                const isManagerial = row.hierarchy === "Managerial" || row.hierarchy === "Supervisor";
                                 const value = isManagerial ? manegerialValue : rnfValue;
 
                                 // Check if payroll already exists for today
@@ -85,14 +87,14 @@ function processPayroll() {
                                                 const response = await sinchClient.sms.batches.send({
                                                     sendSMSRequestBody: {
                                                         to: [
-                                                            "63" + number
+                                                            "+63" + number
                                                         ],
                                                         from: process.env.SINCHNUMBER,
-                                                        body: "This is a test message using the Sinch Node.js SDK."
+                                                        body: message,
                                                     }
                                                 });
                                                 console.log(JSON.stringify(response));
-                                                db.query(`INSERT INTO smsnotifications (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
+                                                db.query(`INSERT INTO smsnotification (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
                                                     if (err) {
                                                         console.error(err);
                                                     } else {
