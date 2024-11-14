@@ -73,6 +73,7 @@ function processPayroll() {
                         });
                     }
                     const payroll_id = generateUUID();
+                    const notification_id = generateUUID();
 
                     db.query(
                         `SELECT * FROM attendance WHERE employee_id = ? AND MONTH(date) = ? AND YEAR(date) = ?`,
@@ -121,7 +122,7 @@ function processPayroll() {
 
                                                 await sendSMS(to, from, text);
                                                 await sendEmail(row.email, row.name, message, 'employee_payslip');
-                                                db.query(`INSERT INTO smsNotification (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err) => {
+                                                db.query(`INSERT INTO smsNotification (notification_id, employee_id, phone_number , message) VALUES (?,?,?,?)`, [notification_id, employee_id, number, message], (err) => {
                                                     if (err) {
                                                         console.error(err);
                                                     } else {
