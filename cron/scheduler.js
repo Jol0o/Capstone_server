@@ -1,7 +1,11 @@
 const cron = require("node-cron");
 const db = require("../db");
-const { SinchClient } = require("@sinch/sdk-core");
+const { Vonage } = require('@vonage/server-sdk');
 const moment = require('moment-timezone');
+const nodemailer = require('nodemailer');
+const ejs = require('ejs');
+const fs = require('fs');
+const path = require('path');
 require("dotenv").config();
 
 if (!db) {
@@ -9,17 +13,44 @@ if (!db) {
     process.exit(1);
 }
 
-
-const sinchClient = new SinchClient({
-    projectId: process.env.PROJECTID,
-    keyId: process.env.ACCESSKEY,
-    keySecret: process.env.ACCESSSECRET,
+const vonage = new Vonage({
+    apiKey: process.env.VONAGE_KEY,
+    apiSecret: process.env.VONAGE_SECRET
 });
 
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL,
+        pass: process.env.APP_PASSWORD,
+    }, tls: {
+        // Do not fail on invalid certs
+        rejectUnauthorized: false
+    }
+});
+
+async function sendEmail(to, name, message, template) {
+    const templatePath = path.join(__dirname, `../email_template/${template}.ejs`);
+    const templateContent = fs.readFileSync(templatePath, 'utf-8');
+    const html = ejs.render(templateContent, { email: to, name, message });
+
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to,
+        subject: 'Your Monthly Payslip',
+        html,
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log('Email sent successfully');
+    } catch (error) {
+        console.error('Error sending email:', error);
+    }
+}
 function processPayroll() {
     console.log("Payroll processing started");
     const currentDate = moment().tz('Asia/Manila');
-    const currentDay = currentDate.date();
 
     db.query(
         "SELECT * FROM employees",
@@ -29,7 +60,7 @@ function processPayroll() {
             } else {
                 result.forEach((row) => {
                     console.log('running payroll processing');
-                    const number = row.phone_number.substring(1);
+                    const number = row.phone_number;
                     let totalHours = 0;
                     const employee_id = row.employee_id;
                     const month = currentDate.month() + 1;
@@ -72,11 +103,11 @@ function processPayroll() {
                                             console.error("Database query error:", err);
                                         } else if (payrollResult.length === 0) {
                                             // No payroll entry for today, proceed with insertion
-                                            db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay) VALUES (?,?,?,?)`, value, (err, result) => {
+                                            db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay) VALUES (?,?,?,?)`, value, (err) => {
                                                 if (err) {
                                                     console.error(err);
                                                 } else {
-                                                    console.log(result);
+                                                    console.log(`Payroll processed for employee_id ${employee_id}`);
                                                 }
                                             });
 
@@ -84,28 +115,37 @@ function processPayroll() {
                                             const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.monthSalary} working hours ${totalHours}.`;
                                             console.log(message);
                                             const run = async () => {
-                                                const response = await sinchClient.sms.batches.send({
-                                                    sendSMSRequestBody: {
-                                                        to: [
-                                                            "+63" + number
-                                                        ],
-                                                        from: process.env.SINCHNUMBER,
-                                                        body: message,
-                                                    }
-                                                });
-                                                console.log(JSON.stringify(response));
-                                                db.query(`INSERT INTO smsnotification (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err, result) => {
+                                                const to = "63" + number;
+                                                const from = "Vonage APIs";
+                                                const text = message;
+
+                                                await sendSMS(to, from, text);
+                                                await sendEmail(row.email, row.name, message, 'employee_payslip');
+                                                db.query(`INSERT INTO smsnotification (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err) => {
                                                     if (err) {
                                                         console.error(err);
                                                     } else {
-                                                        console.log(result);
+                                                        console.log(`SMS notification sent to employee_id ${employee_id}`);
                                                     }
                                                 });
+                                            };
+
+                                            async function sendSMS(to, from, text) {
+                                                await vonage.sms.send({ to, from, text })
+                                                    .then(resp => {
+                                                        console.log('Message sent successfully');
+                                                        console.log(resp);
+                                                    })
+                                                    .catch(err => {
+                                                        console.log('There was an error sending the messages.');
+                                                        console.error(err);
+                                                    });
                                             }
+
                                             run();
 
                                             // Reset monthSalary to 0
-                                            db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id], (err, result) => {
+                                            db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id], (err) => {
                                                 if (err) {
                                                     console.error(err);
                                                 } else {
@@ -125,7 +165,6 @@ function processPayroll() {
         }
     );
 }
-
 
 // Schedule the cron job
 cron.schedule(

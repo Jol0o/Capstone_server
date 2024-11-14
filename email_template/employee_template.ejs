@@ -1,87 +1,67 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Welcome</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #f0f0f0;
-      }
-      .container {
-        width: 100%;
-        margin: auto;
-        max-width: 500px;
-        background-color: #fff;
-        padding: 20px;
-        border-radius: 5px;
-        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-      }
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Gasbee</title>
+</head>
+<body style="font-family: 'Arial', sans-serif; margin: 0; padding: 0; background-color: #f6f9fc;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="min-width: 100%; background-color: #f6f9fc;">
+    <tr>
+      <td align="center" style="padding: 40px 0;">
+        <table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 0; background-color: #4600b3; border-radius: 8px 8px 0 0; text-align: center;">
+              <h1 style="color: #ffffff; font-size: 28px; margin: 0; font-weight: bold;">Welcome to Gasbee!</h1>
+            </td>
+          </tr>
 
-      .header {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        background-color: #4600b3;
-        border-radius: 5px;
-        width: 100%;
-      }
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px 30px;">
+              <p style="font-size: 18px; line-height: 1.5; color: #333333; margin: 0 0 20px 0; font-weight: bold;">Your account has been created. Here are your credentials:</p>
+              
+              <!-- Credentials Card -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f0f4f8; border-radius: 8px; margin-bottom: 30px;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <p style="font-size: 16px; line-height: 1.5; color: #333333; margin: 0 0 10px 0;">
+                      <strong>Email:</strong> <%= email %>
+                    </p>
+                    <img src="<%= qrcode %>" alt="QR Code" style="display: block; width: 100px; height: 100px; margin: 20px auto 0; border-radius: 8px;">
+                  </td>
+                </tr>
+              </table>
 
-      h1 {
-        color: #fff;
-        width: 100%;
-      }
+              <!-- Banner Image -->
+              <img src="https://res.cloudinary.com/dkibnftac/image/upload/v1717310531/mockrocket-capture_yteptg.png" alt="Gasbee Banner" style="display: block; width: 100%; max-width: 540px; height: auto; border-radius: 8px; margin: 0 auto;">
 
-      p {
-        font-weight: bold;
-      }
+              <!-- Call to Action Button -->
+              <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 30px;">
+                <tr>
+                  <td align="center">
+                    <a href="#" style="display: inline-block; background-color: #4600b3; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: bold; padding: 12px 30px; border-radius: 25px; transition: background-color 0.3s ease;">Get Started</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-      ul {
-        list-style-type: none;
-        padding: 0;
-      }
-      li {
-        margin-bottom: 10px;
-      }
-
-      img {
-        height: 220px;
-        margin: auto;
-        width: 100%;
-        object-fit: cover;
-        border-radius: 5px;
-      }
-
-      .qrcode {
-        height: 100px;
-        margin: auto;
-        width: 100%;
-        object-fit: contain;
-        border-radius: 5px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header"><h1>Welcome to Our Website</h1></div>
-      <p>Your account has been created. Here are your credentials:</p>
-      <div class="card">
-        <ul>
-          <li>Email: <%= email %></li>
-          <li>
-            Password: your account password is the last 4 digits of your phone
-            number.
-          </li>
-        </ul>
-        <img class="qrcode" src="<%= qrcode %>" alt="qrcode" />
-      </div>
-
-      <img
-        src="https://res.cloudinary.com/dkibnftac/image/upload/v1717310531/mockrocket-capture_yteptg.png"
-        alt="Mock"
-      />
-    </div>
-  </body>
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px; background-color: #f0f4f8; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="font-size: 14px; color: #666666; margin: 0 0 10px 0;">&copy; 2024 Gasbee. All Rights Reserved.</p>
+              <p style="font-size: 12px; color: #999999; margin: 0;">
+                <a href="#" style="color: #4600b3; text-decoration: none;">Privacy Policy</a> | 
+                <a href="#" style="color: #4600b3; text-decoration: none;">Terms of Service</a> | 
+                <a href="#" style="color: #4600b3; text-decoration: none;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>

@@ -3,7 +3,7 @@ const nodemailer = require('nodemailer');
 const ejs = require('ejs');
 const path = require('path');
 
-async function sendEmail(email, qrcode, message, type = 'welcome') {
+async function sendEmail(email, qrcode, name, message, type = 'welcome') {
     // Create a transporter
     const transporter = nodemailer.createTransport({
         host: "smtp.gmail.com", // Corrected SMTP host
@@ -20,7 +20,7 @@ async function sendEmail(email, qrcode, message, type = 'welcome') {
 
     // Render the EJS template
     const templatePath = type === 'welcome' ? './employee_template.ejs' : './employee_payslip.ejs';
-    const html = await ejs.renderFile(path.join(__dirname, templatePath), { email, qrcode, message });
+    const html = await ejs.renderFile(path.join(__dirname, templatePath), { email, qrcode, message, name });
 
     // Setup email data
     let mailOptions = {
