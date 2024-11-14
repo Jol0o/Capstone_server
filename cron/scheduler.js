@@ -121,7 +121,7 @@ function processPayroll() {
 
                                                 await sendSMS(to, from, text);
                                                 await sendEmail(row.email, row.name, message, 'employee_payslip');
-                                                db.query(`INSERT INTO smsnotification (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err) => {
+                                                db.query(`INSERT INTO smsNotification (employee_id, phone_number , message) VALUES (?,?, ?)`, [employee_id, number, message], (err) => {
                                                     if (err) {
                                                         console.error(err);
                                                     } else {
