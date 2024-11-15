@@ -580,7 +580,8 @@ router.delete('/employee/:id', async (req, res) => {
     try {
         db.query('DELETE FROM attendance WHERE employee_id = ?', [id]);
         db.query('DELETE FROM payroll WHERE employee_id = ?', [id]);
-        db.query('DELETE FROM smsnotification WHERE employee_id = ?', [id]);
+        db.query('DELETE FROM smsNotification WHERE employee_id = ?', [id]);
+        db.query('DELETE FROM leaveRequest WHERE employee_id = ?', [id]);
         db.query('DELETE FROM employees WHERE employee_id = ?', [id]);
         db.query('DELETE FROM user WHERE user_id = ?', [id]);
 
