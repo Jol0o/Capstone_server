@@ -582,8 +582,7 @@ router.delete('/employee/:id', async (req, res) => {
         db.query('DELETE FROM payroll WHERE employee_id = ?', [id]);
         db.query('DELETE FROM smsnotification WHERE employee_id = ?', [id]);
         db.query('DELETE FROM employees WHERE employee_id = ?', [id]);
-
-        db.query('DELETE FROM user WHERE employee_id = ?', [id]);
+        db.query('DELETE FROM user WHERE user_id = ?', [id]);
 
         res.status(200).json({ status: 'ok' });
         if (req.io) {
