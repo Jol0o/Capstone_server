@@ -1883,6 +1883,7 @@ router.get('/admins', (req, res) => {
 });
 
 router.put('/admin/:id', [
+    check('name').notEmpty().withMessage('Name is required').matches(/^[a-zA-Z\s.]+$/).withMessage('Name must not contain special characters except for periods'),
     check('email').isEmail().withMessage('Invalid email address'),
     check('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
     check('position').notEmpty().withMessage('Position is required')
@@ -1893,13 +1894,13 @@ router.put('/admin/:id', [
     }
 
     const { id } = req.params;
-    const { email, password, position } = req.body;
+    const { name, email, password, position } = req.body;
     if (!id) return res.status(404).json({ message: 'Id is required' });
     const hashedPassword = await hashPassword(password);
 
-    const q = 'UPDATE admin SET email = ?, password = ?, position = ? WHERE id = ?';
+    const q = 'UPDATE admin SET name = ? ,email = ?, password = ?, position = ? WHERE id = ?';
 
-    db.query(q, [email, hashedPassword, position, id], (err) => {
+    db.query(q, [name, email, hashedPassword, position, id], (err) => {
         if (err) {
             return res.status(500).json({ message: 'Database error', error: err });
         } else {
