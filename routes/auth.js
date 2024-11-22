@@ -3,7 +3,7 @@ const router = express.Router();
 const mysql = require('mysql');
 const { hashPassword, comparePassword, generateToken, verifyToken } = require('../utils/auth');
 const db = require('../db');
-const { check, validationResult } = require('express-validator');
+const { check, body, validationResult } = require('express-validator');
 const cookieParser = require('cookie-parser');
 const authMiddleware = require('../middleware/auth');
 const crypto = require('crypto');
@@ -15,51 +15,79 @@ const prisma = new PrismaClient();
 
 router.use(cookieParser());
 // Register a new user
-router.post('/register', async (req, res) => {
-    const { email, password, name, phone_number } = req.body;
 
-    // Log the received request body
-    console.log('Request Body:', req.body);
-
-    // Check if email, password, name, or phone_number is null or empty
-    if (!email || !password || !name || !phone_number) {
-        return res.status(400).json({ message: 'email, password, name, and phone number are required' });
-    }
-
-    const hashedPassword = await hashPassword(password);
-
-    try {
-        // Check if an employee request with the same email or phone number already exists
-        const existingRequest = await prisma.employeeRequest.findFirst({
-            where: {
-                OR: [
-                    { email: email },
-                    { phone_number: phone_number }
-                ]
-            }
-        });
-
-        if (existingRequest) {
-            return res.status(400).json({ message: 'email or phone number already exists' });
+router.post(
+    '/register',
+    [
+        // Validation rules
+        body('email')
+            .isEmail()
+            .withMessage('Invalid email address')
+            .normalizeEmail(),
+        body('password')
+            .isLength({ min: 6 })
+            .withMessage('Password must be at least 6 characters long')
+            .matches(/\d/)
+            .withMessage('Password must contain a number')
+            .matches(/[a-zA-Z]/)
+            .withMessage('Password must contain a letter'),
+        body('name')
+            .notEmpty()
+            .withMessage('Name is required')
+            .trim()
+            .escape(),
+        body('phone_number')
+            .isMobilePhone()
+            .withMessage('Invalid phone number'),
+    ],
+    async (req, res) => {
+        // Check for validation errors
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
         }
 
-        // Create a new employee request
-        await prisma.employeeRequest.create({
-            data: {
-                email,
-                password: hashedPassword,
-                name,
-                phone_number,
-                status: 'pending'
-            }
-        });
-        res.sendStatus(201);
-    } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
+        const { email, password, name, phone_number } = req.body;
 
+        try {
+            // Hash the password
+            const hashedPassword = await hashPassword(password);
+
+            // Check for existing email or phone number
+            const existingRequest = await prisma.employeeRequest.findFirst({
+                where: {
+                    OR: [{ email }, { phone_number }],
+                },
+            });
+
+            const existingEmployee = await prisma.employees.findFirst({
+                where: {
+                    email,
+                },
+            });
+
+            if (existingRequest || existingEmployee) {
+                return res.status(400).json({ message: 'Email or phone number already exists' });
+            }
+
+            // Create a new employee request
+            await prisma.employeeRequest.create({
+                data: {
+                    email,
+                    password: hashedPassword,
+                    name,
+                    phone_number,
+                    status: 'pending',
+                },
+            });
+
+            res.sendStatus(201);
+        } catch (error) {
+            console.error('Error:', error);
+            res.status(500).json({ message: 'Server error' });
+        }
+    }
+);
 
 
 // Login a user
@@ -116,7 +144,17 @@ router.post('/login', (req, res) => {
 
 
 router.post('/admin/register', [
-    // ... other validations ...
+    check('name')
+        .notEmpty().withMessage('Name is required')
+        .trim()
+        .escape(),
+    check('email')
+        .isEmail().withMessage('Invalid email address')
+        .normalizeEmail(),
+    check('position')
+        .notEmpty().withMessage('Position is required')
+        .trim()
+        .escape(),
     check('password')
         .isLength({ min: 8 }).withMessage('Password must be at least 8 characters long')
         .matches(/\d/).withMessage('Password must contain a number')
@@ -127,15 +165,13 @@ router.post('/admin/register', [
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password } = req.body;
-
-    console.log(email)
+    const { name, email, position, password } = req.body;
 
     const hashedPassword = await hashPassword(password);
 
     db.query(
-        'INSERT INTO admin (email, password) VALUES (?, ?)',
-        [email, hashedPassword],
+        'INSERT INTO admin (name, email,position, password) VALUES (?, ? ,? ,?)',
+        [name, email, position, hashedPassword],
         (error) => {
             if (error) {
                 if (error.code === 'ER_DUP_ENTRY') {

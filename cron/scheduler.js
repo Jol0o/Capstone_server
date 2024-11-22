@@ -48,9 +48,22 @@ async function sendEmail(to, name, message, template) {
         console.error('Error sending email:', error);
     }
 }
+
 function processPayroll() {
     console.log("Payroll processing started");
     const currentDate = moment().tz('Asia/Manila');
+    const dayOfMonth = currentDate.date();
+    const month = currentDate.month() + 1;
+    const year = currentDate.year();
+    let startDate, endDate;
+
+    if (dayOfMonth <= 15) {
+        startDate = moment().startOf('month').format('YYYY-MM-DD');
+        endDate = moment().date(15).format('YYYY-MM-DD');
+    } else {
+        startDate = moment().date(16).format('YYYY-MM-DD');
+        endDate = moment().endOf('month').format('YYYY-MM-DD');
+    }
 
     db.query(
         "SELECT * FROM employees",
@@ -63,8 +76,7 @@ function processPayroll() {
                     const number = row.phone_number;
                     let totalHours = 0;
                     const employee_id = row.employee_id;
-                    const month = currentDate.month() + 1;
-                    const year = currentDate.year();
+
                     function generateUUID() {
                         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
                             const r = (Math.random() * 16) | 0,
@@ -76,8 +88,8 @@ function processPayroll() {
                     const notification_id = generateUUID();
 
                     db.query(
-                        `SELECT * FROM attendance WHERE employee_id = ? AND MONTH(date) = ? AND YEAR(date) = ?`,
-                        [employee_id, month, year],
+                        `SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?`,
+                        [employee_id, startDate, endDate],
                         (err, attendanceResult) => {
                             if (err) {
                                 console.error("Database query error:", err);
@@ -113,7 +125,7 @@ function processPayroll() {
                                             });
 
                                             console.log(number);
-                                            const message = `Hello, ${row.name}. Your salary for this month has been processed. Please check your account. PHP${row.monthSalary} working hours ${totalHours}.`;
+                                            const message = `Hello, ${row.name}. Your salary for the period from ${startDate} to ${endDate} has been processed. Please check your account. PHP${row.monthSalary} for working hours ${totalHours}.`;
                                             console.log(message);
                                             const run = async () => {
                                                 const to = "63" + number;
@@ -131,19 +143,18 @@ function processPayroll() {
                                                 });
                                             };
 
-                                            async function sendSMS(to, from, text) {
-                                                await vonage.sms.send({ to, from, text })
-                                                    .then(resp => {
-                                                        console.log('Message sent successfully');
-                                                        console.log(resp);
-                                                    })
-                                                    .catch(err => {
-                                                        console.log('There was an error sending the messages.');
-                                                        console.error(err);
-                                                    });
-                                            }
-
-                                            run();
+                                            // async function sendSMS(to, from, text) {
+                                            //     await vonage.sms.send({ to, from, text })
+                                            //         .then(resp => {
+                                            //             console.log('Message sent successfully');
+                                            //             console.log(resp);
+                                            //         })
+                                            //         .catch(err => {
+                                            //             console.log('There was an error sending the messages.');
+                                            //             console.error(err);
+                                            //         });
+                                            // }
+                                            // run();
 
                                             // Reset monthSalary to 0
                                             db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id], (err) => {

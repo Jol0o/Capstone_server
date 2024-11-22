@@ -18,6 +18,17 @@ const LeaveRequestStatus = {
     REJECTED: 'Rejected'
 };
 
+const query = (sql, params) => {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (err, results) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve(results);
+        });
+    });
+};
+
 router.get('/hello', (req, res) => {
     res.send({ express: 'Hello From Express' });
 });
@@ -32,13 +43,14 @@ router.post('/create_employee', [
     check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
     check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Base salary must not start with 0'),
     check('password').notEmpty().withMessage('Password is required'),
+    check('leaveCredits').matches(/^[0-9]\d*$/).withMessage('Leave credits must be a number'),
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { employee_id, name, email, department, position, qrcode, phone_number, baseSalary, password, day_off, avatar, hierarchy } = req.body;
+    const { employee_id, name, email, department, position, qrcode, phone_number, baseSalary, password, day_off, avatar, hierarchy, leaveCredits } = req.body;
 
     try {
         // Check if an employee with the same email or phone number already exists
@@ -73,7 +85,8 @@ router.post('/create_employee', [
                 password: hashedPassword,
                 hierarchy: hierarchy || 'employee',
                 day_off: day_off || false,
-                avatar: avatar || null
+                avatar: avatar || null,
+                leaveCredits: parseInt(leaveCredits, 10)
             }
         });
 
@@ -134,13 +147,13 @@ router.get('/search_attendance', async (req, res) => {
         FROM attendance 
         INNER JOIN employees ON attendance.employee_id = employees.employee_id
         WHERE 1=1
-        AND (attendance.employee_id LIKE ? OR attendance.attendance_id LIKE ?)
+        AND (attendance.employee_id LIKE ? OR attendance.attendance_id LIKE ? OR employees.name LIKE ?  OR employees.email LIKE ?)
         ORDER BY attendance.date DESC
         LIMIT ? OFFSET ?
     `;
     const queryParams = [];
     const searchPattern = `%${q}%`;
-    queryParams.push(searchPattern, searchPattern, parseInt(limit), parseInt(offset));
+    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
@@ -150,7 +163,6 @@ router.get('/search_attendance', async (req, res) => {
         res.status(200).json({ status: 'ok', data: results });
     });
 });
-
 
 router.get('/search_payroll', async (req, res) => {
     const { q, limit = 10, offset = 0 } = req.query;
@@ -164,12 +176,12 @@ router.get('/search_payroll', async (req, res) => {
         FROM payroll 
         INNER JOIN employees ON payroll.employee_id = employees.employee_id
         WHERE 1=1
-        AND (payroll.employee_id LIKE ? OR payroll.payroll_id LIKE ?)
+        AND (payroll.employee_id LIKE ? OR payroll.payroll_id LIKE ? OR employees.name LIKE ?  OR employees.email LIKE ?)
         LIMIT ? OFFSET ?
     `;
     const queryParams = [];
     const searchPattern = `%${q}%`;
-    queryParams.push(searchPattern, searchPattern, parseInt(limit), parseInt(offset));
+    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
@@ -192,13 +204,13 @@ router.get('/search_leave_request', async (req, res) => {
         FROM leaveRequest 
         INNER JOIN employees ON leaveRequest.employee_id = employees.employee_id
         WHERE 1=1
-        AND (leaveRequest.employee_id LIKE ? OR leaveRequest.leave_type LIKE ? OR leaveRequest.reason LIKE ? OR leaveRequest.status LIKE ?)
+        AND (leaveRequest.employee_id LIKE ? OR leaveRequest.leave_type LIKE ? OR leaveRequest.reason LIKE ? OR leaveRequest.status LIKE ? OR employees.name LIKE ?  OR employees.email LIKE ?)
         ORDER BY leaveRequest.created_at DESC
         LIMIT ? OFFSET ?
     `;
     const queryParams = [];
     const searchPattern = `%${q}%`;
-    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), parseInt(offset));
+    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
@@ -241,7 +253,11 @@ router.post('/time_in', authMiddleware, async (req, res) => {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-            res.status(200).json({ status: 'ok' });
+            res.status(200).json({
+                status: 'ok', data: {
+                    time_in,
+                }
+            });
             if (req.io) {
                 req.io.emit('attendanceUpdate', { message: 'Employee data updated' });
             } else {
@@ -259,9 +275,13 @@ router.put('/time_out/:id', async (req, res) => {
 
     try {
         // Fetch holidays for the current year and country
-        const holidays = await getHolidays('2024', 'ph').then(holidays => console.log(holidays)).catch(error => console.error(error)); // 'PH' for the Philippines
-        const isHoliday = holidays.some(holiday => moment(holiday.date.iso).isSame(now, 'day'));
-
+        try {
+            const holidays = await getHolidays('2024', 'ph');
+            const filteredHolidays = holidays.filter(holiday => holiday.locations === 'All');
+            const isHoliday = filteredHolidays.some(holiday => moment(holiday.date.iso).isSame(now, 'day'));
+        } catch (error) {
+            console.error(error);
+        }
         // Fetch the attendance record
         const attendanceQuery = `
             SELECT attendance.*, employees.hierarchy, employees.baseSalary
@@ -313,6 +333,12 @@ router.put('/time_out/:id', async (req, res) => {
             // Calculate the difference in milliseconds
             const diffInMilliseconds = timeOutDate.diff(timeInDate);
             const diffInHours = diffInMilliseconds / (1000 * 60 * 60);
+            const diffInMinutes = diffInMilliseconds / (1000 * 60);
+
+            // Validate the time difference
+            if (diffInMinutes < 10) {
+                return res.status(400).json({ status: 'error', message: 'Time out must be at least 10 minutes after time in!' });
+            }
 
             // Validate the time difference
             if (isNaN(diffInHours) || diffInHours <= 0) {
@@ -383,6 +409,8 @@ router.put('/time_out/:id', async (req, res) => {
                         hoursWorked: diffInHours,
                         salaryDeduction,
                         overtimePay,
+                        time_in,
+                        time_out,
                         totalSalary: dailySalary + overtimePay - salaryDeduction
                     });
 
@@ -497,9 +525,10 @@ router.put('/employees/:id', [
     check('qrcode').notEmpty().withMessage('QR code is required'),
     check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
     check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+    check('leaveCredits').matches(/^[0-9]\d*$/).withMessage('Leave credits must be a number'),
 ], async (req, res) => {
     const { id } = req.params;
-    const { name, email, department, position, qrcode, phone_number, password, baseSalary, avatar, hierarchy, day_off } = req.body;
+    const { name, email, department, position, qrcode, phone_number, password, baseSalary, avatar, hierarchy, day_off, leaveCredits } = req.body;
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -519,12 +548,37 @@ router.put('/employees/:id', [
         }
 
         // Hash password if provided and different from the existing one
+        const validatePassword = (password) => {
+            const minLength = 6;
+            const hasUpperCase = /[A-Z]/.test(password);
+            const hasLowerCase = /[a-z]/.test(password);
+            const hasNumber = /[0-9]/.test(password);
+
+            if (password.length < minLength) {
+                throw new Error('Password must be at least 6 characters long');
+            }
+            if (!hasUpperCase) {
+                throw new Error('Password must contain at least one uppercase letter');
+            }
+            if (!hasLowerCase) {
+                throw new Error('Password must contain at least one lowercase letter');
+            }
+            if (!hasNumber) {
+                throw new Error('Password must contain at least one number');
+            }
+        };
+
         if (password && password !== existingEmployee.password) {
-            hashedPassword = await hashPassword(password);
-            await prisma.user.update({
-                where: { user_id: existingEmployee.employee_id },
-                data: { password: hashedPassword }
-            });
+            try {
+                validatePassword(password);
+                hashedPassword = await hashPassword(password);
+                await prisma.user.update({
+                    where: { user_id: existingEmployee.employee_id },
+                    data: { password: hashedPassword }
+                });
+            } catch (error) {
+                return res.status(400).json({ status: 'error', message: error.message });
+            }
         } else {
             hashedPassword = existingEmployee.password;
         }
@@ -544,7 +598,8 @@ router.put('/employees/:id', [
                 qrcode,
                 avatar: avatar || null,
                 hierarchy: hierarchy || 'employee',
-                day_off: day_off || false
+                day_off: day_off || false,
+                leaveCredits: parseInt(leaveCredits, 10)
             }
         });
 
@@ -884,19 +939,29 @@ router.get('/yearly_attendance', (req, res) => {
 
 //route for the payroll table
 router.get('/payroll', (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 15;
-    const offset = (page - 1) * limit;
+    const { limit = 15, page = 1, startDate, endDate } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const countQuery = 'SELECT COUNT(*) as total FROM payroll';
+    const baseQuery = `
+    FROM payroll 
+    INNER JOIN employees ON payroll.employee_id = employees.employee_id
+    WHERE
+        1=1
+        ${startDate && endDate ? 'AND payroll.created_at BETWEEN ? AND ?' : ''}`;
+
+    const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
     const dataQuery = `
-        SELECT payroll.*, employees.name, employees.avatar
-        FROM payroll 
-        INNER JOIN employees ON payroll.employee_id = employees.employee_id
-        LIMIT ? OFFSET ?
-    `;
+    SELECT payroll.*, employees.name, employees.avatar
+    ${baseQuery}
+    ORDER BY payroll.created_at ASC
+    LIMIT ? OFFSET ?`;
 
-    db.query(countQuery, (err, countResult) => {
+    const queryParams = [];
+    if (startDate && endDate) {
+        queryParams.push(startDate, endDate);
+    }
+
+    db.query(countQuery, queryParams, (err, countResult) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
@@ -904,7 +969,9 @@ router.get('/payroll', (req, res) => {
             const total = countResult[0].total;
             const totalPages = Math.ceil(total / limit);
 
-            db.query(dataQuery, [limit, offset], (err, dataResult) => {
+            queryParams.push(parseInt(limit), parseInt(offset));
+
+            db.query(dataQuery, queryParams, (err, dataResult) => {
                 if (err) {
                     console.error(err);
                     res.status(500).json({ status: 'error' });
@@ -912,9 +979,9 @@ router.get('/payroll', (req, res) => {
                     res.status(200).json({
                         status: 'ok',
                         data: dataResult,
-                        currentPage: page,
+                        currentPage: parseInt(page),
                         totalPages: totalPages,
-                        isLastPage: page === totalPages,
+                        isLastPage: parseInt(page) === totalPages,
                         total
                     });
                 }
@@ -922,6 +989,40 @@ router.get('/payroll', (req, res) => {
         }
     });
 });
+
+router.get('/export-payroll', (req, res) => {
+    const { startDate, endDate } = req.query;
+
+    const baseQuery = `
+    FROM payroll 
+    INNER JOIN employees ON payroll.employee_id = employees.employee_id
+    WHERE
+        1=1
+        ${startDate && endDate ? 'AND payroll.created_at BETWEEN ? AND ?' : ''}`;
+
+    const dataQuery = `
+    SELECT payroll.*, employees.name, employees.avatar
+    ${baseQuery}
+    ORDER BY payroll.created_at ASC`;
+
+    const queryParams = [];
+    if (startDate && endDate) {
+        queryParams.push(startDate, endDate);
+    }
+
+    db.query(dataQuery, queryParams, (err, dataResult) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ status: 'error' });
+        } else {
+            res.status(200).json({
+                status: 'ok',
+                data: dataResult,
+            });
+        }
+    });
+}
+);
 
 router.get('/payroll/:id', (req, res) => {
     const { id } = req.params;
@@ -965,6 +1066,7 @@ router.get('/payroll/:id', (req, res) => {
     });
 });
 
+
 router.delete('/payroll/:id', (req, res) => {
     const { id } = req.params;
 
@@ -986,36 +1088,47 @@ router.delete('/payroll/:id', (req, res) => {
 
 //route for attendance
 router.get('/attendances', (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 15;
-    const offset = (page - 1) * limit;
+    const { limit = 10, page = 0, startDate, endDate } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const countQuery = 'SELECT COUNT(*) as total FROM attendance';
-    const dataQuery = `
-    SELECT attendance.*, employees.name, employees.avatar
+    const baseQuery = `
     FROM attendance 
     INNER JOIN employees ON attendance.employee_id = employees.employee_id
-    ORDER BY attendance.date DESC
-    LIMIT ? OFFSET ?
-`;
+    WHERE
+        1=1
+        ${startDate && endDate ? 'AND attendance.date BETWEEN ? AND ?' : ''}`;
 
-    db.query(countQuery, (err, countResult) => {
+    const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+    const dataQuery = `
+    SELECT attendance.*, employees.name, employees.avatar
+    ${baseQuery}
+    ORDER BY attendance.date ASC
+    LIMIT ? OFFSET ?`;
+
+    const queryParams = [];
+    if (startDate && endDate) {
+        queryParams.push(startDate, endDate);
+    }
+
+    db.query(countQuery, queryParams, (err, countResult) => {
         if (err) {
             res.status(500).json({ status: 'error' });
         } else {
             const total = countResult[0].total;
             const totalPages = Math.ceil(total / limit);
 
-            db.query(dataQuery, [limit, offset], (err, dataResult) => {
+            queryParams.push(parseInt(limit), parseInt(offset));
+
+            db.query(dataQuery, queryParams, (err, dataResult) => {
                 if (err) {
-                    res.status(500).json({ status: 'error' });
+                    res.status(500).json({ status: err.message });
                 } else {
                     res.status(200).json({
                         status: 'ok',
                         data: dataResult,
-                        currentPage: page,
+                        currentPage: parseInt(page),
                         totalPages: totalPages,
-                        isLastPage: page === totalPages
+                        isLastPage: parseInt(page) === totalPages
                     });
                 }
             });
@@ -1023,9 +1136,17 @@ router.get('/attendances', (req, res) => {
     });
 });
 
-
 router.get('/user-attendance/:id', (req, res) => {
     const { id } = req.params;
+    const { startDate, endDate, page = 1, limit = 5 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const countQuery = `
+        SELECT COUNT(*) as total
+        FROM attendance
+        WHERE attendance.employee_id = ?
+        ${startDate && endDate ? 'AND attendance.date BETWEEN ? AND ?' : ''}
+    `;
 
     const attendanceQuery = `
         SELECT 
@@ -1038,283 +1159,140 @@ router.get('/user-attendance/:id', (req, res) => {
             attendance
         WHERE 
             attendance.employee_id = ?
+            ${startDate && endDate ? 'AND attendance.date BETWEEN ? AND ?' : ''}
         ORDER BY 
             attendance.date
+        LIMIT ? OFFSET ?
     `;
 
-    const leaveRequestQuery = `
-        SELECT 
-            inclusive_dates, 
-            to_date, 
-            status 
-        FROM 
-            leaveRequest 
-        WHERE 
-            employee_id = ? 
-            AND status IN ('Done', 'Approved')
-    `;
+    const countParams = [id];
+    const attendanceParams = [id];
 
-    db.query(attendanceQuery, [id], (err, attendanceResult) => {
+    if (startDate && endDate) {
+        countParams.push(startDate, endDate);
+        attendanceParams.push(startDate, endDate);
+    }
+
+    db.query(countQuery, countParams, (err, countResult) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ status: 'error' });
         }
 
-        db.query(leaveRequestQuery, [id], (err, leaveRequestResult) => {
+        const total = countResult[0].total;
+        const totalPages = Math.ceil(total / limit);
+
+        attendanceParams.push(parseInt(limit), parseInt(offset));
+
+        db.query(attendanceQuery, attendanceParams, (err, attendanceResult) => {
             if (err) {
                 console.error(err);
                 return res.status(500).json({ status: 'error' });
             }
 
-            const attendanceData = [];
-            let previousDate = null;
-            const today = moment().tz('Asia/Manila').startOf('day');
+            const leaveRequestQuery = `
+                SELECT 
+                    inclusive_dates, 
+                    to_date, 
+                    status 
+                FROM 
+                    leaveRequest 
+                WHERE 
+                    employee_id = ? 
+                    AND status IN ('Done', 'Approved')
+            `;
 
-            // Map leave dates with their inclusive date ranges for easier checking
-            const leaveDates = leaveRequestResult.flatMap(leave => {
-                let datesInRange = [];
-                let start = moment(leave.inclusive_dates).tz('Asia/Manila');
-                const end = moment(leave.to_date).tz('Asia/Manila');
-                while (start.isSameOrBefore(end, 'day')) {
-                    datesInRange.push({
-                        date: start.clone().format('YYYY-MM-DD'),
-                        inclusive_dates: leave.inclusive_dates,
-                        to_date: leave.to_date,
-                        status: 'off duty'
-                    });
-                    start.add(1, 'day');
-                }
-                return datesInRange;
-            });
-
-            // Function to get leave data for a specific date
-            const getLeaveDataForDate = (date) => {
-                return leaveDates.find(leave => leave.date === date);
-            };
-
-            attendanceResult.forEach(record => {
-                const currentDate = moment(record.date).tz('Asia/Manila');
-                const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
-                const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
-
-                // Initialize status as "absent"
-                let status = 'absent';
-
-                // Check if the current date falls within any leave request period
-                const leaveData = getLeaveDataForDate(currentDate.format('YYYY-MM-DD'));
-
-                if (leaveData) {
-                    status = 'off duty';
-                } else if (record.time_in) {
-                    // If the employee has a time-in record, adjust status accordingly
-                    status = timeIn.isBefore(eightAM) ? 'present' : 'late';
+            db.query(leaveRequestQuery, [id], (err, leaveRequestResult) => {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json({ status: 'error' });
                 }
 
-                // Check for gaps in dates and add "absent" status for missing dates
-                if (previousDate) {
-                    const diffDays = currentDate.diff(previousDate, 'days');
-                    for (let i = 1; i < diffDays; i++) {
-                        const missingDate = previousDate.clone().add(i, 'days');
-                        const missingLeaveData = getLeaveDataForDate(missingDate.format('YYYY-MM-DD'));
-                        attendanceData.push({
-                            employee_id: record.employee_id,
-                            date: missingDate.format('YYYY-MM-DD'),
-                            day: missingDate.format('dddd'),
-                            status: missingLeaveData ? 'off duty' : 'absent',
-                            inclusive_dates: missingLeaveData ? missingLeaveData.inclusive_dates : null,
-                            to_date: missingLeaveData ? missingLeaveData.to_date : null,
-                            leave_status: missingLeaveData ? missingLeaveData.status : null
+                const attendanceData = [];
+                let previousDate = null;
+                const today = moment().tz('Asia/Manila').startOf('day');
+
+                // Map leave dates with their inclusive date ranges for easier checking
+                const leaveDates = leaveRequestResult.flatMap(leave => {
+                    let datesInRange = [];
+                    let start = moment(leave.inclusive_dates).tz('Asia/Manila');
+                    const end = moment(leave.to_date).tz('Asia/Manila');
+                    while (start.isSameOrBefore(end, 'day')) {
+                        datesInRange.push({
+                            date: start.clone().format('YYYY-MM-DD'),
+                            inclusive_dates: leave.inclusive_dates,
+                            to_date: leave.to_date,
+                            status: 'off duty'
                         });
+                        start.add(1, 'day');
                     }
-                }
-
-                // Add the current record with determined status
-                attendanceData.push({
-                    employee_id: record.employee_id,
-                    date: record.date,
-                    day: record.day,
-                    status: status,
-                    time_in: record.time_in,
-                    time_out: record.time_out,
-                    inclusive_dates: leaveData ? leaveData.inclusive_dates : null,
-                    to_date: leaveData ? leaveData.to_date : null,
-                    leave_status: leaveData ? leaveData.status : null
+                    return datesInRange;
                 });
 
-                previousDate = currentDate;
-            });
+                // Function to get leave data for a specific date
+                const getLeaveDataForDate = (date) => {
+                    return leaveDates.find(leave => leave.date === date);
+                };
 
-            // Add "absent" entries for dates after the last attendance record up to today
-            if (previousDate) {
-                let nextDate = previousDate.clone().add(1, 'days');
-                while (nextDate.isBefore(today) || nextDate.isSame(today, 'day')) {
-                    const nextLeaveData = getLeaveDataForDate(nextDate.format('YYYY-MM-DD'));
+                attendanceResult.forEach(record => {
+                    const currentDate = moment(record.date).tz('Asia/Manila');
+                    const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+                    const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+
+                    // Initialize status as "absent"
+                    let status = 'absent';
+
+                    // Check if the current date falls within any leave request period
+                    const leaveData = getLeaveDataForDate(currentDate.format('YYYY-MM-DD'));
+
+                    if (leaveData) {
+                        status = 'off duty';
+                    } else if (record.time_in) {
+                        // If the employee has a time-in record, adjust status accordingly
+                        status = timeIn.isBefore(eightAM) ? 'present' : 'late';
+                    }
+
+                    // Check for gaps in dates and add "absent" status for missing dates
+                    if (previousDate) {
+                        const diffDays = currentDate.diff(previousDate, 'days');
+                        for (let i = 1; i < diffDays; i++) {
+                            const missingDate = previousDate.clone().add(i, 'days');
+                            const missingLeaveData = getLeaveDataForDate(missingDate.format('YYYY-MM-DD'));
+                            attendanceData.push({
+                                employee_id: record.employee_id,
+                                date: missingDate.format('YYYY-MM-DD'),
+                                day: missingDate.format('dddd'),
+                                status: missingLeaveData ? 'off duty' : 'absent',
+                                inclusive_dates: missingLeaveData ? missingLeaveData.inclusive_dates : null,
+                                to_date: missingLeaveData ? missingLeaveData.to_date : null,
+                                leave_status: missingLeaveData ? missingLeaveData.status : null
+                            });
+                        }
+                    }
+
+                    // Add the current record with determined status
                     attendanceData.push({
-                        employee_id: id,
-                        date: nextDate.format('YYYY-MM-DD'),
-                        day: nextDate.format('dddd'),
-                        status: nextLeaveData ? 'off duty' : 'absent',
-                        inclusive_dates: nextLeaveData ? nextLeaveData.inclusive_dates : null,
-                        to_date: nextLeaveData ? nextLeaveData.to_date : null,
-                        leave_status: nextLeaveData ? nextLeaveData.status : null
+                        employee_id: record.employee_id,
+                        date: record.date,
+                        day: record.day,
+                        status: status,
+                        time_in: record.time_in,
+                        time_out: record.time_out,
+                        inclusive_dates: leaveData ? leaveData.inclusive_dates : null,
+                        to_date: leaveData ? leaveData.to_date : null,
+                        leave_status: leaveData ? leaveData.status : null
                     });
-                    nextDate.add(1, 'days');
-                }
-            }
 
-            res.status(200).json({ status: 'ok', data: attendanceData });
-        });
-    });
-});
-
-
-router.get('/monthly-attendance', (req, res) => {
-    const currentMonth = moment().tz('Asia/Manila').month() + 1; // Get current month (1-12)
-    const currentYear = moment().tz('Asia/Manila').year(); // Get current year
-
-    const attendanceQuery = `
-        SELECT 
-            attendance.employee_id, 
-            employees.name,
-            attendance.date, 
-            attendance.time_in,
-            attendance.time_out,
-            DAYNAME(attendance.date) as day
-        FROM 
-            attendance
-        INNER JOIN 
-            employees ON attendance.employee_id = employees.employee_id
-        WHERE 
-            MONTH(attendance.date) = ? AND YEAR(attendance.date) = ?
-        ORDER BY 
-            attendance.date
-    `;
-
-    const leaveRequestQuery = `
-        SELECT 
-            employee_id,
-            inclusive_dates, 
-            to_date, 
-            status 
-        FROM 
-            leaveRequest 
-        WHERE 
-            status IN ('Done', 'Approved')
-    `;
-
-    db.query(attendanceQuery, [currentMonth, currentYear], (err, attendanceResult) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ status: 'error' });
-        }
-
-        db.query(leaveRequestQuery, (err, leaveRequestResult) => {
-            if (err) {
-                console.error(err);
-                return res.status(500).json({ status: 'error' });
-            }
-
-            const attendanceData = [];
-            const today = moment().tz('Asia/Manila').startOf('day');
-
-            // Map leave dates with their inclusive date ranges for easier checking
-            const leaveDates = leaveRequestResult.flatMap(leave => {
-                let datesInRange = [];
-                let start = moment(leave.inclusive_dates).tz('Asia/Manila');
-                const end = moment(leave.to_date).tz('Asia/Manila');
-                while (start.isSameOrBefore(end, 'day')) {
-                    datesInRange.push({
-                        employee_id: leave.employee_id,
-                        date: start.clone().format('YYYY-MM-DD'),
-                        inclusive_dates: leave.inclusive_dates,
-                        to_date: leave.to_date,
-                        status: 'off duty'
-                    });
-                    start.add(1, 'day');
-                }
-                return datesInRange;
-            });
-
-            // Function to get leave data for a specific date and employee
-            const getLeaveDataForDate = (employee_id, date) => {
-                return leaveDates.find(leave => leave.employee_id === employee_id && leave.date === date);
-            };
-
-            const employeeAttendanceMap = {};
-
-            attendanceResult.forEach(record => {
-                const employee_id = record.employee_id;
-                if (!employeeAttendanceMap[employee_id]) {
-                    employeeAttendanceMap[employee_id] = {
-                        previousDate: null,
-                        records: []
-                    };
-                }
-
-                const currentDate = moment(record.date).tz('Asia/Manila');
-                const timeIn = moment.tz(`${record.date} ${record.time_in}`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
-                const eightAM = moment.tz(`${record.date} 08:00 AM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
-
-                // Initialize status as "absent"
-                let status = 'absent';
-
-                // Check if the current date falls within any leave request period
-                const leaveData = getLeaveDataForDate(employee_id, currentDate.format('YYYY-MM-DD'));
-
-                if (leaveData) {
-                    status = 'off duty';
-                } else if (record.time_in) {
-                    // If the employee has a time-in record, adjust status accordingly
-                    status = timeIn.isBefore(eightAM) ? 'present' : 'late';
-                }
-
-                // Check for gaps in dates and add "absent" status for missing dates
-                const previousDate = employeeAttendanceMap[employee_id].previousDate;
-                if (previousDate) {
-                    const diffDays = currentDate.diff(previousDate, 'days');
-                    for (let i = 1; i < diffDays; i++) {
-                        const missingDate = previousDate.clone().add(i, 'days');
-                        const missingLeaveData = getLeaveDataForDate(employee_id, missingDate.format('YYYY-MM-DD'));
-                        employeeAttendanceMap[employee_id].records.push({
-                            employee_id: record.employee_id,
-                            name: record.name,
-                            date: missingDate.format('YYYY-MM-DD'),
-                            day: missingDate.format('dddd'),
-                            status: missingLeaveData ? 'off duty' : 'absent',
-                            inclusive_dates: missingLeaveData ? missingLeaveData.inclusive_dates : null,
-                            to_date: missingLeaveData ? missingLeaveData.to_date : null,
-                            leave_status: missingLeaveData ? missingLeaveData.status : null
-                        });
-                    }
-                }
-
-                // Add the current record with determined status
-                employeeAttendanceMap[employee_id].records.push({
-                    employee_id: record.employee_id,
-                    name: record.name,
-                    date: record.date,
-                    day: record.day,
-                    status: status,
-                    time_in: record.time_in,
-                    time_out: record.time_out,
-                    inclusive_dates: leaveData ? leaveData.inclusive_dates : null,
-                    to_date: leaveData ? leaveData.to_date : null,
-                    leave_status: leaveData ? leaveData.status : null
+                    previousDate = currentDate;
                 });
 
-                employeeAttendanceMap[employee_id].previousDate = currentDate;
-            });
-
-            // Add "absent" entries for dates after the last attendance record up to today
-            Object.keys(employeeAttendanceMap).forEach(employee_id => {
-                const { previousDate, records } = employeeAttendanceMap[employee_id];
+                // Add "absent" entries for dates after the last attendance record up to today
                 if (previousDate) {
                     let nextDate = previousDate.clone().add(1, 'days');
                     while (nextDate.isBefore(today) || nextDate.isSame(today, 'day')) {
-                        const nextLeaveData = getLeaveDataForDate(employee_id, nextDate.format('YYYY-MM-DD'));
-                        records.push({
-                            employee_id: employee_id,
-                            name: records[0].name,
+                        const nextLeaveData = getLeaveDataForDate(nextDate.format('YYYY-MM-DD'));
+                        attendanceData.push({
+                            employee_id: id,
                             date: nextDate.format('YYYY-MM-DD'),
                             day: nextDate.format('dddd'),
                             status: nextLeaveData ? 'off duty' : 'absent',
@@ -1322,17 +1300,55 @@ router.get('/monthly-attendance', (req, res) => {
                             to_date: nextLeaveData ? nextLeaveData.to_date : null,
                             leave_status: nextLeaveData ? nextLeaveData.status : null
                         });
-                        nextDate.add(1, 'day');
+                        nextDate.add(1, 'days');
                     }
                 }
-                attendanceData.push(...records);
-            });
 
-            res.status(200).json({ status: 'ok', data: attendanceData });
+                res.status(200).json({
+                    status: 'ok',
+                    data: attendanceData,
+                    currentPage: parseInt(page),
+                    totalPages: totalPages,
+                    isLastPage: parseInt(page) === totalPages
+                });
+            });
         });
     });
 });
 
+
+router.get('/import-attendance', (req, res) => {
+    const { startDate, endDate } = req.query;
+
+    const baseQuery = `
+    FROM attendance 
+    INNER JOIN employees ON attendance.employee_id = employees.employee_id
+    WHERE
+        1=1
+        ${startDate && endDate ? 'AND attendance.date BETWEEN ? AND ?' : ''}`;
+
+    const dataQuery = `
+    SELECT attendance.*, employees.name, employees.avatar
+    ${baseQuery}
+    ORDER BY attendance.date ASC`;
+
+    const queryParams = [];
+    if (startDate && endDate) {
+        queryParams.push(startDate, endDate);
+    }
+    db.query(dataQuery, queryParams, (err, dataResult) => {
+        if (err) {
+            console.warn(err);
+            res.status(500).json({ status: err.message });
+        } else {
+            res.status(200).json({
+                status: 'ok',
+                data: dataResult,
+            });
+        }
+    });
+}
+);
 
 
 router.get('/attendance/:id', (req, res) => {
@@ -1343,7 +1359,7 @@ router.get('/attendance/:id', (req, res) => {
     const currentDate = moment().tz('Asia/Manila').format('YYYY-MM-DD');
     console.log(currentDate);
 
-    const query = `SELECT * FROM attendance WHERE employee_id = ? AND DATE(date) = ?`;
+    const query = `SELECT * FROM attendance WHERE employee_id = ? AND DATE(date) = ? `;
 
     db.query(query, [id, currentDate], (err, results) => {
         if (err) {
@@ -1375,22 +1391,21 @@ router.delete('/attendance/:id', (req, res) => {
 })
 
 
-//Leave request route
+//Leave request
+
 router.post('/leave_request', [
     check('leaveType').notEmpty().withMessage('Leave type is required'),
     check('reason').notEmpty().withMessage('Reason is required'),
     check('daysRequested').isInt({ min: 1 }).withMessage('Days requested must be at least 1'),
     check('department').notEmpty().withMessage('Department is required'),
-    check('distributionCopy').isObject().withMessage('Distribution copy must be an object'),
     check('email').isEmail().withMessage('Valid email is required'),
     check('inclusiveDates').notEmpty().withMessage('Inclusive dates are required').isISO8601().withMessage('Inclusive dates must be a valid date'),
     check('name').notEmpty().withMessage('Name is required').matches(/^[a-zA-Z\s.]+$/).withMessage('Name must not contain special characters except for periods'),
     check('personToTakeover').notEmpty().withMessage('Person to take over is required'),
     check('position').notEmpty().withMessage('Position is required'),
     check('requestedBy').notEmpty().withMessage('Requested by is required'),
-    check('supportingDocument').notEmpty().withMessage('Supporting document is required'),
     check('toDate').notEmpty().withMessage('To date is required').isISO8601().withMessage('To date must be a valid date')
-], (req, res) => {
+], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
@@ -1408,20 +1423,35 @@ router.post('/leave_request', [
         personToTakeover,
         position,
         requestedBy,
-        supportingDocument,
-        toDate
+        toDate,
+        supportingDocumentUrl
     } = req.body;
     const { employee_id } = req.user;
 
+
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    let parsedDistributionCopy;
+    try {
+        // Only parse if it's a string that looks like JSON
+        if (typeof distributionCopy === 'string') {
+            parsedDistributionCopy = JSON.parse(distributionCopy);
+        } else {
+            // If it's already an object, no need to parse
+            parsedDistributionCopy = distributionCopy;
+        }
+    } catch (error) {
+        console.error('JSON parse error:', error);
+        return res.status(400).json({ status: 'error', message: 'Invalid distribution copy format' });
+    }
+
 
     const query = `
-        INSERT INTO leaveRequest (
-            employee_id, leave_type, reason, days_requested, department, distribution_copy, email, inclusive_dates, name, person_to_takeover, position, requested_by, supporting_document, to_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
-    `;
+        INSERT INTO leaveRequest(
+        employee_id, leave_type, reason, days_requested, department, distribution_copy, email, inclusive_dates, name, person_to_takeover, position, requested_by, supporting_document, to_date
+    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
     const values = [
-        employee_id, leaveType, reason, daysRequested, department, JSON.stringify(distributionCopy), email, new Date(inclusiveDates), name, personToTakeover, position, requestedBy, supportingDocument, new Date(toDate)
+        employee_id, leaveType, reason, daysRequested, department, JSON.stringify(parsedDistributionCopy), email, new Date(inclusiveDates), name, personToTakeover, position, requestedBy, supportingDocumentUrl, new Date(toDate)
     ];
 
     db.query(query, values, (err, result) => {
@@ -1439,6 +1469,7 @@ router.post('/leave_request', [
     });
 });
 
+
 router.get('/leave_request', (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 15;
@@ -1450,8 +1481,8 @@ router.get('/leave_request', (req, res) => {
         FROM leaveRequest 
         INNER JOIN employees ON leaveRequest.employee_id = employees.employee_id
         ORDER BY leaveRequest.created_at DESC
-        LIMIT ? OFFSET ?
-    `;
+    LIMIT ? OFFSET ?
+        `;
 
     db.query(countQuery, (err, countResult) => {
         if (err) {
@@ -1481,7 +1512,7 @@ router.get('/leave_request', (req, res) => {
 
 router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, approved_by, received_by, recorded_by, department_head, hr_department, withpay } = req.body;
     console.log('Server-side:', id, req.body);
 
     // Ensure LeaveRequestStatus is defined and contains the expected values
@@ -1496,23 +1527,87 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
         return res.status(400).json({ status: 'error', message: 'Invalid status' });
     }
 
-    const query = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
-    const values = [status, id];
+    let query;
+    let values;
 
-    db.query(query, values, (err, result) => {
+    if (status === 'Approved') {
+        if (!approved_by || !received_by || !recorded_by) {
+            return res.status(400).json({ status: 'error', message: 'Approved by, received by, and recorded by are required' });
+        }
+        query = 'UPDATE leaveRequest SET status = ?, approved_by = ?, received_by = ?, recorded_by = ?, department_head = ?, hr_department = ?, date_of_approve = ?, date_of_received = ?, withpay = ? WHERE id = ?';
+        values = [status, approved_by, received_by, recorded_by, department_head, hr_department, new Date(), new Date(), withpay, id];
+    } else if (status === 'Rejected') {
+        if (!received_by || !recorded_by) {
+            return res.status(400).json({ status: 'error', message: 'Received by and recorded by are required' });
+        }
+        query = 'UPDATE leaveRequest SET status = ?, received_by = ?, date_of_received = ?, recorded_by = ? WHERE id = ?';
+        values = [status, received_by, new Date(), recorded_by, id];
+    } else if (status === 'Process') {
+        query = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
+        values = [status, id];
+    }
+
+    db.query(query, values, (err) => {
         if (err) {
             console.error(err);
-            res.status(500).json({ status: 'error', message: 'Database error' });
-        } else {
-            res.status(200).json({ status: 'ok', message: 'Leave request status updated successfully' });
-            if (req.io) {
-                req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-            } else {
-                console.error('Socket.io instance not found');
-            }
+            return res.status(500).json({ status: 'error', message: 'Database error' });
         }
+
+        db.query('SELECT * FROM leaveRequest WHERE id = ?', [id], (err, result) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ status: 'error', message: 'Database error' });
+            }
+
+            const leaveRequest = result[0];
+
+            // Update leaveCredits
+            db.query('UPDATE employees SET leaveCredits = leaveCredits - ? WHERE employee_id = ?', [leaveRequest.days_requested, leaveRequest.employee_id], (err) => {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json({ status: 'error', message: 'Database error' });
+                }
+
+                // If withpay is true, update totalSalary
+                if (withpay) {
+                    db.query('SELECT baseSalary FROM employees WHERE employee_id = ?', [leaveRequest.employee_id], (err, result) => {
+                        if (err) {
+                            console.error(err);
+                            return res.status(500).json({ status: 'error', message: 'Database error' });
+                        }
+
+                        const baseSalary = result[0].baseSalary;
+                        const additionalSalary = baseSalary * leaveRequest.days_requested;
+
+                        db.query('UPDATE employees SET totalSalary = totalSalary + ? WHERE employee_id = ?', [additionalSalary, leaveRequest.employee_id], (err) => {
+                            if (err) {
+                                console.error(err);
+                                return res.status(500).json({ status: 'error', message: 'Database error' });
+                            }
+
+                            res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
+                            if (req.io) {
+                                req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                                req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                            } else {
+                                console.error('Socket.io instance not found');
+                            }
+                        });
+                    });
+                } else {
+                    res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
+                    if (req.io) {
+                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                        req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                    } else {
+                        console.error('Socket.io instance not found');
+                    }
+                }
+            });
+        });
     });
 });
+
 
 router.delete('/leave_request/:id', (req, res) => {
     const { id } = req.params;
@@ -1539,7 +1634,6 @@ router.get('/user_request', (req, res) => {
             res.status(500).json({ status: 'error', message: 'Database error' });
         } else {
             res.status(200).json({ status: 'ok', data: result });
-
         }
     });
 })
@@ -1561,7 +1655,7 @@ router.get('/get-users', (req, res) => {
         const page = Math.min(Math.max(1, parseInt(req.query.page) || 1), totalPages);
         const offset = Math.max(0, (page - 1) * limit); // Ensure offset is not negative
 
-        console.log(`Total records: ${total}, Total pages: ${totalPages}, Limit: ${limit}, Offset: ${offset}`);
+        console.log(`Total records: ${total}, Total pages: ${totalPages}, Limit: ${limit}, Offset: ${offset} `);
 
         db.query('SELECT * FROM user LIMIT ? OFFSET ?', [limit, offset], (err, result) => {
             if (err) {
@@ -1668,7 +1762,7 @@ router.post('/employee-requests/:id/approve', [
     check('qrcode').notEmpty().withMessage('QR code is required'),
 ], async (req, res) => {
     const { id } = req.params;
-    const { department, position, baseSalary, hierarchy, employee_id, qrcode } = req.body;
+    const { department, position, baseSalary, hierarchy, employee_id, qrcode, leaveCredits } = req.body;
 
     // Check for validation errors
     const errors = validationResult(req);
@@ -1712,6 +1806,7 @@ router.post('/employee-requests/:id/approve', [
                 department: department || 'Default Department',
                 position: position || 'Default Position',
                 qrcode,
+                leaveCredits,
                 avatar: '',
                 baseSalary: parseInt(baseSalary, 10) || 0,
                 totalSalary: 0,
@@ -1768,7 +1863,7 @@ router.get('/admins', (req, res) => {
         const page = Math.min(Math.max(1, parseInt(req.query.page) || 1), totalPages);
         const offset = Math.max(0, (page - 1) * limit); // Ensure offset is not negative
 
-        console.log(`Total records: ${total}, Total pages: ${totalPages}, Limit: ${limit}, Offset: ${offset}`);
+        console.log(`Total records: ${total}, Total pages: ${totalPages}, Limit: ${limit}, Offset: ${offset} `);
 
         db.query('SELECT * FROM admin LIMIT ? OFFSET ?', [limit, offset], (err, results) => {
             if (err) {
@@ -1790,6 +1885,7 @@ router.get('/admins', (req, res) => {
 router.put('/admin/:id', [
     check('email').isEmail().withMessage('Invalid email address'),
     check('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+    check('position').notEmpty().withMessage('Position is required')
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -1797,13 +1893,13 @@ router.put('/admin/:id', [
     }
 
     const { id } = req.params;
-    const { email, password } = req.body;
+    const { email, password, position } = req.body;
     if (!id) return res.status(404).json({ message: 'Id is required' });
     const hashedPassword = await hashPassword(password);
 
-    const q = 'UPDATE admin SET email = ?, password = ? WHERE id = ?';
+    const q = 'UPDATE admin SET email = ?, password = ?, position = ? WHERE id = ?';
 
-    db.query(q, [email, hashedPassword, id], (err) => {
+    db.query(q, [email, hashedPassword, position, id], (err) => {
         if (err) {
             return res.status(500).json({ message: 'Database error', error: err });
         } else {
@@ -1833,7 +1929,7 @@ router.get('/export/:table', (req, res) => {
 
     if (!table) return res.status(400).json({ message: 'Table name is required' });
 
-    const q = `SELECT * FROM ??`;
+    const q = `SELECT * FROM ?? `;
 
     db.query(q, [table], (err, result) => {
         if (err) {
@@ -1864,6 +1960,103 @@ router.post('/run-payroll', async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: err.message });
+    }
+});
+
+router.get('/user-dashboard', authMiddleware, async (req, res) => {
+    const { employee_id } = req.user;
+
+    // SQL Queries
+    const queries = {
+        leaveCredits: 'SELECT leaveCredits FROM employees WHERE employee_id = ?',
+        usedLeaveDays: `
+            SELECT SUM(days_requested) AS used_leave_days 
+            FROM leaveRequest 
+            WHERE employee_id = ?
+        AND status IN("Approved", "Done") 
+            AND YEAR(created_at) = YEAR(CURRENT_DATE)
+        `,
+        pendingLeaveRequests: `
+            SELECT COUNT(*) AS pending_leave_requests 
+            FROM leaveRequest 
+            WHERE employee_id = ?
+        AND status IN("Pending", "Process")
+            `,
+        latestPayroll: `
+    SELECT *
+        FROM payroll 
+            WHERE employee_id = ?
+        ORDER BY created_at DESC 
+            LIMIT 1
+        `,
+        totalDays: `
+            SELECT COUNT(*) AS total_days 
+            FROM attendance 
+            WHERE employee_id = ?
+        AND MONTH(date) = MONTH(CURRENT_DATE) 
+            AND YEAR(date) = YEAR(CURRENT_DATE)
+        `,
+        allPayroll: 'SELECT * FROM payroll WHERE employee_id = ?'
+    };
+
+    try {
+        // Run all queries in parallel
+        const [
+            leaveCreditsResult,
+            usedLeaveDaysResult,
+            pendingLeaveRequestsResult,
+            latestPayrollResult,
+            totalDaysResult,
+            totalPayrollResult,
+        ] = await Promise.all([
+            query(queries.leaveCredits, [employee_id]),
+            query(queries.usedLeaveDays, [employee_id]),
+            query(queries.pendingLeaveRequests, [employee_id]),
+            query(queries.latestPayroll, [employee_id]),
+            query(queries.totalDays, [employee_id]),
+            query(queries.allPayroll, [employee_id])
+        ]);
+
+        // Extract results
+        const leaveCredits = leaveCreditsResult[0]?.leaveCredits || 0;
+        const usedLeaveDays = usedLeaveDaysResult[0]?.used_leave_days || 0;
+        const pendingLeaveRequests = pendingLeaveRequestsResult[0]?.pending_leave_requests || 0;
+        const latestPayroll = latestPayrollResult[0] || null;
+        const totalDays = totalDaysResult[0]?.total_days || 0;
+        const totalPayroll = totalPayrollResult || null;
+
+        // Send response
+        res.status(200).json({
+            status: 'ok',
+            leaveCredits,
+            usedLeaveDays,
+            pendingLeaveRequests,
+            latestPayroll,
+            totalDays,
+            totalPayroll
+        });
+    } catch (err) {
+        console.error('Error executing queries:', err);
+        res.status(500).json({ status: 'error', message: 'Database error' });
+    }
+});
+
+router.get('/get-admin', async (req, res) => {
+    const { email } = req.query;
+
+    if (!email) return res.status(400).send({ message: 'Email is required' });
+
+    try {
+        const admin = await prisma.admin.findUnique({
+            where: { email }
+        });
+
+        if (!admin) return res.status(404).send({ message: 'Admin not found' });
+
+        res.status(200).send({ status: 'ok', data: admin });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: 'Internal server error' });
     }
 });
 

@@ -9,8 +9,10 @@ datasource db {
 
 model admin {
   id       Int    @id @default(autoincrement())
+  name     String @default("Unknown")
   email    String @unique
   password String
+  position String?
 }
 
 model attendance {
@@ -25,32 +27,34 @@ model attendance {
 }
 
 model employees {
-  id           Int       @id @default(autoincrement())
-  employee_id  String    @unique
-  name         String
-  created_at   DateTime  @default(now())
-  department   String
-  position     String
-  qrcode       String
-  avatar       String?
-  email        String    @unique
-  phone_number String    @unique
-  baseSalary   Int       @default(0) // Provide a default value
-  totalSalary  Int       @default(0) // Provide a default value
-  monthSalary  Int       @default(0) // Provide a default value
-  password     String
-  hierarchy    String    @default("employee") // Provide a default value
-  day_off      Boolean?
-  attendance   attendance[]
-  leaveRequests leaveRequest[]
-  payrolls     payroll[]
+  id              Int       @id @default(autoincrement())
+  employee_id     String    @unique
+  name            String
+  created_at      DateTime  @default(now())
+  department      String
+  position        String
+  qrcode          String
+  avatar          String?
+  email           String    @unique
+  phone_number    String    @unique
+  baseSalary      Int       @default(0) // Provide a default value
+  totalSalary     Int       @default(0) // Provide a default value
+  monthSalary     Int       @default(0) // Provide a default value
+  password        String
+  hierarchy       String    @default("employee") // Provide a default value
+  day_off         Boolean?
+  leaveCredits    Int       @default(0) // Add leave credits with a default value
+  attendance      attendance[]
+  leaveRequests   leaveRequest[]
+  payrolls        payroll[]
   smsNotifications smsNotification[] @relation("EmployeeRelation")
-  phoneNumbers smsNotification[] @relation("PhoneNumberRelation")
-  users        user[]
+  phoneNumbers    smsNotification[] @relation("PhoneNumberRelation")
+  users           user[]
 }
 
+
 model leaveRequest {
-  id                  Int       @id @default(autoincrement())
+  id                  Int                 @id @default(autoincrement())
   employee_id         String?
   leave_type          String
   reason              String
@@ -63,12 +67,21 @@ model leaveRequest {
   person_to_takeover  String
   position            String
   requested_by        String
-  supporting_document String
+  supporting_document String?
+  approved_by         String?            // Name of the person who approved the leave
+  received_by         String?            // Name of the person who received the leave request
+  department_head     String?            // Name of the department head
+  hr_department       String?            // Name of the HR representative
+  date_of_approve     DateTime?          // Date when leave was approved
+  date_of_received    DateTime?          // Date when leave request was received
+  recorded_by         String?            // Name of the person who recorded the request
+  withpay             Boolean?   
   to_date             DateTime
-  created_at          DateTime  @default(now())
+  created_at          DateTime           @default(now())
   status              LeaveRequestStatus @default(Pending)
-  employee            employees? @relation(fields: [employee_id], references: [employee_id])
+  employee            employees?         @relation(fields: [employee_id], references: [employee_id])          // Indicate "With Pay" or "Without Pay"
 }
+
 
 model payroll {
   id           Int     @id @default(autoincrement())
