@@ -49,7 +49,7 @@ app.use((req, res, next) => {
 
 
 app.use('/api/auth', authRouter);
-app.use('/api', router);
+app.use('/api', authMiddleware, router);
 
 io.on('connection', (socket) => {
     console.log('New client connected');

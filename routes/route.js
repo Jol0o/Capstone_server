@@ -518,14 +518,18 @@ router.get('/employees/:id', (req, res) => {
 
 
 router.put('/employees/:id', [
-    check('name').notEmpty().withMessage('Name is required'),
+    check('name').notEmpty().withMessage('Name is required')
+        .matches(/^[a-zA-Z\s]*$/).withMessage('Name must not contain special characters'),
     check('email').isEmail().withMessage('Valid email is required'),
-    check('department').notEmpty().withMessage('Department is required'),
-    check('position').notEmpty().withMessage('Position is required'),
+    check('department').notEmpty().withMessage('Department is required')
+        .matches(/^[a-zA-Z\s]*$/).withMessage('Department must not contain special characters'),
+    check('position').notEmpty().withMessage('Position is required')
+        .matches(/^[a-zA-Z\s]*$/).withMessage('Position must not contain special characters'),
     check('qrcode').notEmpty().withMessage('QR code is required'),
-    check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
-    check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
-    check('leaveCredits').matches(/^[0-9]\d*$/).withMessage('Leave credits must be a number'),
+    check('phone_number').notEmpty().withMessage('Phone number is required')
+        .matches(/^[0-9]{11}$/).withMessage('Phone number must be exactly 11 digits and must not contain special characters'),
+    check('baseSalary').isInt({ min: 1 }).withMessage('Base salary must be a positive integer and must not start with 0'),
+    check('leaveCredits').isInt({ min: 0 }).withMessage('Leave credits must be a non-negative integer and must not start with 0'),
 ], async (req, res) => {
     const { id } = req.params;
     const { name, email, department, position, qrcode, phone_number, password, baseSalary, avatar, hierarchy, day_off, leaveCredits } = req.body;
@@ -1758,8 +1762,9 @@ router.delete('/employee-requests/:id', async (req, res) => {
 router.post('/employee-requests/:id/approve', [
     check('department').notEmpty().withMessage('Department is required'),
     check('position').notEmpty().withMessage('Position is required'),
-    check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Salary must not start with 0'),
+    check('baseSalary').isInt({ min: 1 }).withMessage('Base salary must be a positive integer and must not start with 0'),
     check('qrcode').notEmpty().withMessage('QR code is required'),
+    check('leaveCredits').isInt({ min: 0 }).withMessage('Leave credits must be a non-negative integer and must not start with 0'),
 ], async (req, res) => {
     const { id } = req.params;
     const { department, position, baseSalary, hierarchy, employee_id, qrcode, leaveCredits } = req.body;
