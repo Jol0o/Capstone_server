@@ -602,7 +602,7 @@ router.put('/employees/:id', [
                 qrcode,
                 avatar: avatar || null,
                 hierarchy: hierarchy || 'employee',
-                day_off: day_off || false,
+                day_off: Boolean(day_off), // Ensure day_off is a boolean
                 leaveCredits: parseInt(leaveCredits, 10)
             }
         });
@@ -951,7 +951,7 @@ router.get('/payroll', (req, res) => {
     INNER JOIN employees ON payroll.employee_id = employees.employee_id
     WHERE
         1=1
-        ${startDate && endDate ? 'AND payroll.created_at BETWEEN ? AND ?' : ''}`;
+        ${startDate && endDate ? 'AND DATE(payroll.created_at) BETWEEN ? AND ?' : ''}`;
 
     const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
     const dataQuery = `
@@ -1002,7 +1002,7 @@ router.get('/export-payroll', (req, res) => {
     INNER JOIN employees ON payroll.employee_id = employees.employee_id
     WHERE
         1=1
-        ${startDate && endDate ? 'AND payroll.created_at BETWEEN ? AND ?' : ''}`;
+        ${startDate && endDate ? 'AND DATE(payroll.created_at) BETWEEN ? AND ?' : ''}`;
 
     const dataQuery = `
     SELECT payroll.*, employees.name, employees.avatar
@@ -1025,8 +1025,7 @@ router.get('/export-payroll', (req, res) => {
             });
         }
     });
-}
-);
+});
 
 router.get('/payroll/:id', (req, res) => {
     const { id } = req.params;
@@ -1092,7 +1091,7 @@ router.delete('/payroll/:id', (req, res) => {
 
 //route for attendance
 router.get('/attendances', (req, res) => {
-    const { limit = 10, page = 0, startDate, endDate } = req.query;
+    const { limit = 10, page = 1, startDate, endDate } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const baseQuery = `
@@ -1100,7 +1099,7 @@ router.get('/attendances', (req, res) => {
     INNER JOIN employees ON attendance.employee_id = employees.employee_id
     WHERE
         1=1
-        ${startDate && endDate ? 'AND attendance.date BETWEEN ? AND ?' : ''}`;
+        ${startDate && endDate ? 'AND DATE(attendance.date) BETWEEN ? AND ?' : ''}`;
 
     const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
     const dataQuery = `
@@ -1329,7 +1328,7 @@ router.get('/import-attendance', (req, res) => {
     INNER JOIN employees ON attendance.employee_id = employees.employee_id
     WHERE
         1=1
-        ${startDate && endDate ? 'AND attendance.date BETWEEN ? AND ?' : ''}`;
+        ${startDate && endDate ? 'AND DATE(attendance.date) BETWEEN ? AND ?' : ''}`;
 
     const dataQuery = `
     SELECT attendance.*, employees.name, employees.avatar
