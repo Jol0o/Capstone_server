@@ -37,8 +37,8 @@ router.post(
             .trim()
             .escape(),
         body('phone_number')
-            .isMobilePhone()
-            .withMessage('Invalid phone number'),
+            .matches(/^[0-9]{11}$/)
+            .withMessage('Phone number must be exactly 11 digits and must not contain special characters'),
     ],
     async (req, res) => {
         // Check for validation errors
