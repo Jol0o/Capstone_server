@@ -240,10 +240,21 @@ router.post('/time_in', authMiddleware, async (req, res) => {
     // Get the current date and time in the Philippines timezone
     const now = moment().tz('Asia/Manila');
     const currentDate = now.format('YYYY-MM-DD'); // Format the date as YYYY-MM-DD
-    const time_in = now.format('hh:mm A'); // Format the time as hh:mm AM/PM
+    let time_in = now.format('hh:mm A'); // Format the time as hh:mm AM/PM
 
     if (!employee_id) {
         return res.status(400).json({ status: 'error', message: 'Employee_id is required' });
+    }
+
+    // Prevent time_in during non-working hours (8 PM to 4 AM)
+    const hour = now.hour();
+    if (hour >= 20 || hour < 4) {
+        return res.status(400).json({ status: 'error', message: 'Cannot time in during non-working hours (8 PM to 4 AM)' });
+    }
+
+    // If the user tries to time in earlier than 7 AM, set the time_in to 7 AM
+    if (hour < 7) {
+        time_in = moment().tz('Asia/Manila').set({ hour: 7, minute: 0 }).format('hh:mm A');
     }
 
     const query = `INSERT INTO attendance (employee_id, time_in, date, attendance_id, time_out) VALUES (?, ?, ?, ?, ?)`;
@@ -266,7 +277,6 @@ router.post('/time_in', authMiddleware, async (req, res) => {
         }
     });
 });
-
 
 router.put('/time_out/:id', async (req, res) => {
     const { id } = req.params;
@@ -332,16 +342,16 @@ router.put('/time_out/:id', async (req, res) => {
 
             // Calculate the difference in milliseconds
             const diffInMilliseconds = timeOutDate.diff(timeInDate);
-            const diffInHours = diffInMilliseconds / (1000 * 60 * 60);
-            const diffInMinutes = diffInMilliseconds / (1000 * 60);
+            const diffInHours = Math.floor(diffInMilliseconds / (1000 * 60 * 60)); // Only consider full hours
+            const diffInMinutes = (diffInMilliseconds % (1000 * 60 * 60)) / (1000 * 60); // Remaining minutes
 
             // Validate the time difference
-            if (diffInMinutes < 10) {
+            if (diffInMinutes < 10 && diffInHours === 0) {
                 return res.status(400).json({ status: 'error', message: 'Time out must be at least 10 minutes after time in!' });
             }
 
             // Validate the time difference
-            if (isNaN(diffInHours) || diffInHours <= 0) {
+            if (isNaN(diffInHours) || (diffInHours === 0 && diffInMinutes < 10)) {
                 return res.status(400).json({ status: 'error', message: 'Invalid time difference' });
             }
 
@@ -427,7 +437,6 @@ router.put('/time_out/:id', async (req, res) => {
         res.status(500).json({ status: 'error', message: 'Server error' });
     }
 });
-
 
 
 // route for the employee table
@@ -1431,44 +1440,58 @@ router.post('/leave_request', [
     } = req.body;
     const { employee_id } = req.user;
 
-
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
-    let parsedDistributionCopy;
-    try {
-        // Only parse if it's a string that looks like JSON
-        if (typeof distributionCopy === 'string') {
-            parsedDistributionCopy = JSON.parse(distributionCopy);
-        } else {
-            // If it's already an object, no need to parse
-            parsedDistributionCopy = distributionCopy;
-        }
-    } catch (error) {
-        console.error('JSON parse error:', error);
-        return res.status(400).json({ status: 'error', message: 'Invalid distribution copy format' });
-    }
 
-
-    const query = `
-        INSERT INTO leaveRequest(
-        employee_id, leave_type, reason, days_requested, department, distribution_copy, email, inclusive_dates, name, person_to_takeover, position, requested_by, supporting_document, to_date
-    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-    const values = [
-        employee_id, leaveType, reason, daysRequested, department, JSON.stringify(parsedDistributionCopy), email, new Date(inclusiveDates), name, personToTakeover, position, requestedBy, supportingDocumentUrl, new Date(toDate)
-    ];
-
-    db.query(query, values, (err, result) => {
+    // Fetch leaveCredits from employees table
+    db.query('SELECT leaveCredits FROM employees WHERE employee_id = ?', [employee_id], (err, result) => {
         if (err) {
             console.error(err);
-            res.status(500).json({ status: 'error', message: 'Database error' });
-        } else {
-            res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
-            if (req.io) {
-                req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-            } else {
-                console.error('Socket.io instance not found');
-            }
+            return res.status(500).json({ status: 'error', message: 'Database error' });
         }
+
+        const leaveCredits = result[0].leaveCredits;
+
+        // Check if daysRequested is not greater than leaveCredits
+        if (daysRequested > leaveCredits) {
+            return res.status(400).json({ status: 'error', message: 'Requested days exceed available leave credits' });
+        }
+
+        let parsedDistributionCopy;
+        try {
+            // Only parse if it's a string that looks like JSON
+            if (typeof distributionCopy === 'string') {
+                parsedDistributionCopy = JSON.parse(distributionCopy);
+            } else {
+                // If it's already an object, no need to parse
+                parsedDistributionCopy = distributionCopy;
+            }
+        } catch (error) {
+            console.error('JSON parse error:', error);
+            return res.status(400).json({ status: 'error', message: 'Invalid distribution copy format' });
+        }
+
+        const query = `
+            INSERT INTO leaveRequest(
+                employee_id, leave_type, reason, days_requested, department, distribution_copy, email, inclusive_dates, name, person_to_takeover, position, requested_by, supporting_document, to_date
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const values = [
+            employee_id, leaveType, reason, daysRequested, department, JSON.stringify(parsedDistributionCopy), email, new Date(inclusiveDates), name, personToTakeover, position, requestedBy, supportingDocumentUrl, new Date(toDate)
+        ];
+
+        db.query(query, values, (err, result) => {
+            if (err) {
+                console.error(err);
+                res.status(500).json({ status: 'error', message: 'Database error' });
+            } else {
+                res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
+                if (req.io) {
+                    req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                } else {
+                    console.error('Socket.io instance not found');
+                }
+            }
+        });
     });
 });
 
@@ -1564,53 +1587,71 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
 
             const leaveRequest = result[0];
 
-            // Update leaveCredits
-            db.query('UPDATE employees SET leaveCredits = leaveCredits - ? WHERE employee_id = ?', [leaveRequest.days_requested, leaveRequest.employee_id], (err) => {
+            // Check if the user has attendance today
+            const today = new Date().toISOString().split('T')[0];
+            db.query('SELECT * FROM attendance WHERE employee_id = ? AND DATE(date) = ?', [leaveRequest.employee_id, today], (err, attendanceResult) => {
                 if (err) {
                     console.error(err);
                     return res.status(500).json({ status: 'error', message: 'Database error' });
                 }
 
-                // If withpay is true, update totalSalary
-                if (withpay) {
-                    db.query('SELECT baseSalary FROM employees WHERE employee_id = ?', [leaveRequest.employee_id], (err, result) => {
+                if (attendanceResult.length > 0) {
+                    // Delete the attendance record
+                    db.query('DELETE FROM attendance WHERE employee_id = ? AND DATE(date) = ?', [leaveRequest.employee_id, today], (err) => {
                         if (err) {
                             console.error(err);
                             return res.status(500).json({ status: 'error', message: 'Database error' });
                         }
+                    });
+                }
 
-                        const baseSalary = result[0].baseSalary;
-                        const additionalSalary = baseSalary * leaveRequest.days_requested;
+                // Update leaveCredits
+                db.query('UPDATE employees SET leaveCredits = leaveCredits - ? WHERE employee_id = ?', [leaveRequest.days_requested, leaveRequest.employee_id], (err) => {
+                    if (err) {
+                        console.error(err);
+                        return res.status(500).json({ status: 'error', message: 'Database error' });
+                    }
 
-                        db.query('UPDATE employees SET totalSalary = totalSalary + ? WHERE employee_id = ?', [additionalSalary, leaveRequest.employee_id], (err) => {
+                    // If withpay is true, update totalSalary
+                    if (withpay) {
+                        db.query('SELECT baseSalary FROM employees WHERE employee_id = ?', [leaveRequest.employee_id], (err, result) => {
                             if (err) {
                                 console.error(err);
                                 return res.status(500).json({ status: 'error', message: 'Database error' });
                             }
 
-                            res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
-                            if (req.io) {
-                                req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                                req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-                            } else {
-                                console.error('Socket.io instance not found');
-                            }
+                            const baseSalary = result[0].baseSalary;
+                            const additionalSalary = baseSalary * leaveRequest.days_requested;
+
+                            db.query('UPDATE employees SET totalSalary = totalSalary + ? WHERE employee_id = ?', [additionalSalary, leaveRequest.employee_id], (err) => {
+                                if (err) {
+                                    console.error(err);
+                                    return res.status(500).json({ status: 'error', message: 'Database error' });
+                                }
+
+                                res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
+                                if (req.io) {
+                                    req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                                    req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                                } else {
+                                    console.error('Socket.io instance not found');
+                                }
+                            });
                         });
-                    });
-                } else {
-                    res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
-                    if (req.io) {
-                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                        req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
                     } else {
-                        console.error('Socket.io instance not found');
+                        res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
+                        if (req.io) {
+                            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                            req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                        } else {
+                            console.error('Socket.io instance not found');
+                        }
                     }
-                }
+                });
             });
         });
     });
 });
-
 
 router.delete('/leave_request/:id', (req, res) => {
     const { id } = req.params;
