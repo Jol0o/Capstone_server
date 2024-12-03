@@ -248,13 +248,13 @@ router.post('/time_in', authMiddleware, async (req, res) => {
 
     // Prevent time_in during non-working hours (8 PM to 4 AM)
     const hour = now.hour();
-    if (hour >= 20 || hour < 4) {
+    if (hour >= 17 || hour < 4) {
         return res.status(400).json({ status: 'error', message: 'Cannot time in during non-working hours (8 PM to 4 AM)' });
     }
 
     // If the user tries to time in earlier than 7 AM, set the time_in to 7 AM
-    if (hour < 7) {
-        time_in = moment().tz('Asia/Manila').set({ hour: 7, minute: 0 }).format('hh:mm A');
+    if (hour < 8) {
+        time_in = moment().tz('Asia/Manila').set({ hour: 8, minute: 0 }).format('hh:mm A');
     }
 
     const query = `INSERT INTO attendance (employee_id, time_in, date, attendance_id, time_out) VALUES (?, ?, ?, ?, ?)`;
