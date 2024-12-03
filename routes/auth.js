@@ -30,7 +30,9 @@ router.post(
             .matches(/\d/)
             .withMessage('Password must contain a number')
             .matches(/[a-zA-Z]/)
-            .withMessage('Password must contain a letter'),
+            .withMessage('Password must contain a letter')
+            .matches(/[A-Z]/)
+            .withMessage('Password must contain an uppercase letter'),
         body('name')
             .notEmpty()
             .withMessage('Name is required')

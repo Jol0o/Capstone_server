@@ -277,21 +277,23 @@ router.post('/time_in', authMiddleware, async (req, res) => {
         }
     });
 });
-
 router.put('/time_out/:id', async (req, res) => {
     const { id } = req.params;
     const now = moment().tz('Asia/Manila');
     const time_out = now.format('hh:mm A'); // Getting the current time as time_out
+
+    let isHoliday = false;
 
     try {
         // Fetch holidays for the current year and country
         try {
             const holidays = await getHolidays('2024', 'ph');
             const filteredHolidays = holidays.filter(holiday => holiday.locations === 'All');
-            const isHoliday = filteredHolidays.some(holiday => moment(holiday.date.iso).isSame(now, 'day'));
+            isHoliday = filteredHolidays.some(holiday => moment(holiday.date.iso).isSame(now, 'day'));
         } catch (error) {
             console.error(error);
         }
+
         // Fetch the attendance record
         const attendanceQuery = `
             SELECT attendance.*, employees.hierarchy, employees.baseSalary
