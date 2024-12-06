@@ -7,7 +7,6 @@ if (!db) {
     console.error("Database connection not established");
     process.exit(1);
 }
-
 const checkAndUpdateDayOff = () => {
     const currentDate = moment().tz('Asia/Manila').format('YYYY-MM-DD');
     const yesterdayDate = moment().tz('Asia/Manila').subtract(1, 'days').format('YYYY-MM-DD');
@@ -105,13 +104,41 @@ const checkAndUpdateDayOff = () => {
             }
         }
     });
+
+    const q4 = 'SELECT * FROM leaveRequest WHERE status = ?';
+    db.query(q4, ['Pending'], (err, result) => {
+        if (err) {
+            console.error("Database query error:", err);
+        } else {
+            if (result.length > 0) {
+                // Filter results by checking the inclusive_dates with currentDate
+                const filteredResults = result.filter(row => {
+                    const inclusiveDate = moment(row.inclusive_dates).format('YYYY-MM-DD');
+                    return inclusiveDate < currentDate;
+                });
+
+                filteredResults.forEach((row) => {
+                    const q = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
+                    db.query(q, ['Rejected', row.id], (err, result) => {
+                        if (err) {
+                            console.error("Database query error:", err);
+                        } else {
+                            console.log(`Leave request ${row.id} has been automatically rejected`);
+                        }
+                    });
+                });
+            }
+        }
+    });
 };
 
 // Schedule the task to run every 5 minutes
-cron.schedule('0 * * * *', () => {
+cron.schedule('*/5 * * * *', () => {
     console.log('Running day off check task...');
     checkAndUpdateDayOff();
 }, {
     scheduled: true,
     timezone: 'Asia/Manila'
 });
+
+module.exports = checkAndUpdateDayOff;

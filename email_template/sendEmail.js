@@ -26,7 +26,7 @@ async function sendEmail(email, qrcode, name, message, type = 'welcome') {
     let mailOptions = {
         from: process.env.EMAIL,
         to: email,
-        subject: 'Welcome to Our Website',
+        subject: 'Welcome to Gasbee!',
         html: html
     };
 

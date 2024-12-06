@@ -11,11 +11,41 @@ const moment = require('moment-timezone');
 const { Parser } = require('json2csv');
 const processPayroll = require('../cron/scheduler');
 const getHolidays = require('../utils/const');
+const nodemailer = require('nodemailer');
+const path = require('path');
+const fs = require('fs');
+const ejs = require('ejs');
+const { checkAndUpdateDayOff } = require('../cron/scheduleOffEmployeeCheck');
 
 const LeaveRequestStatus = {
     PENDING: 'Pending',
     APPROVED: 'Approved',
     REJECTED: 'Rejected'
+};
+
+const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com", // Corrected SMTP host
+    port: 465, // Use port 465 for secure connection
+    secure: true, // Use `true` for port 465
+    auth: {
+        user: process.env.EMAIL,
+        pass: process.env.APP_PASSWORD, // Use app password if 2FA is enabled
+    }, tls: {
+        // Do not fail on invalid certs
+        rejectUnauthorized: false
+    }
+});
+
+const loadEmailTemplate = async (templateName, values) => {
+    const templatePath = path.join(__dirname, '..', 'email_template', `${templateName}.ejs`);
+    let template = await ejs.renderFile(templatePath);
+
+    // Replace placeholders with actual values
+    for (const key in values) {
+        template = template.replace(new RegExp(`{{${key}}}`, 'g'), values[key]);
+    }
+
+    return template;
 };
 
 const query = (sql, params) => {
@@ -277,6 +307,7 @@ router.post('/time_in', authMiddleware, async (req, res) => {
         }
     });
 });
+
 router.put('/time_out/:id', async (req, res) => {
     const { id } = req.params;
     const now = moment().tz('Asia/Manila');
@@ -1406,7 +1437,6 @@ router.delete('/attendance/:id', (req, res) => {
 
 
 //Leave request
-
 router.post('/leave_request', [
     check('leaveType').notEmpty().withMessage('Leave type is required'),
     check('reason').notEmpty().withMessage('Reason is required'),
@@ -1486,17 +1516,68 @@ router.post('/leave_request', [
                 console.error(err);
                 res.status(500).json({ status: 'error', message: 'Database error' });
             } else {
-                res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
-                if (req.io) {
-                    req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-                } else {
-                    console.error('Socket.io instance not found');
-                }
+                // Fetch admin emails
+                db.query('SELECT email FROM admin', async (err, adminResult) => {
+                    if (err) {
+                        console.error('Error fetching admin emails:', err);
+                        return res.status(500).json({ status: 'error', message: 'Database error' });
+                    }
+
+                    const adminEmails = adminResult.map(admin => admin.email);
+
+                    const emailTemplate = await loadEmailTemplate('employee_request', {
+                        name,
+                        leaveType,
+                        reason,
+                        daysRequested,
+                        department,
+                        position,
+                        requestedBy,
+                        inclusiveDates,
+                        toDate
+                    });
+
+                    // Send email to all admins
+                    const mailOptions = {
+                        from: 'your-email@gmail.com',
+                        to: adminEmails,
+                        subject: 'New Leave Request Submitted',
+                        html: emailTemplate
+                    };
+
+                    transporter.sendMail(mailOptions, (error, info) => {
+                        if (error) {
+                            console.error('Error sending email:', error);
+                            return res.status(500).json({ status: 'error', message: 'Failed to send email' });
+                        }
+                        console.log('Email sent: ' + info.response);
+                        res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
+                        if (req.io) {
+                            req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                        } else {
+                            console.error('Socket.io instance not found');
+                        }
+                    });
+                });
             }
         });
     });
 });
 
+router.post('/check-leave-requests', (req, res) => {
+    try {
+        checkAndUpdateDayOff();
+        if (req.io) {
+            req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+        } else {
+            console.error('Socket.io instance not found');
+        }
+        res.status(200).json({ status: 'ok', message: 'Leave request checked and updated' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ status: 'error', message: 'Database error' });
+    }
+});
 
 router.get('/leave_request', (req, res) => {
     const page = parseInt(req.query.page) || 1;
@@ -1508,9 +1589,14 @@ router.get('/leave_request', (req, res) => {
         SELECT leaveRequest.*, employees.name, employees.avatar
         FROM leaveRequest 
         INNER JOIN employees ON leaveRequest.employee_id = employees.employee_id
-        ORDER BY leaveRequest.created_at DESC
-    LIMIT ? OFFSET ?
-        `;
+        ORDER BY 
+            CASE 
+                WHEN leaveRequest.status = 'Pending' THEN 1 
+                ELSE 2 
+            END, 
+            leaveRequest.created_at DESC
+        LIMIT ? OFFSET ?
+    `;
 
     db.query(countQuery, (err, countResult) => {
         if (err) {
@@ -1664,7 +1750,12 @@ router.delete('/leave_request/:id', (req, res) => {
             console.error(err);
             return res.status(500).json({ status: 'error', message: 'Database error' });
         }
-
+        
+        if (req.io) {
+            req.io.emit('leaveRequestUpdate', { message: 'Employee data updated' });
+        } else {
+            console.error('Socket.io instance not found');
+        }
         res.status(200).json({ status: 'ok', message: 'Leave request deleted successfully' });
     });
 })
