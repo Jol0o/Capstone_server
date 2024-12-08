@@ -15,7 +15,7 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 const fs = require('fs');
 const ejs = require('ejs');
-const { checkAndUpdateDayOff } = require('../cron/scheduleOffEmployeeCheck');
+const checkAndUpdateDayOff = require('../cron/scheduleOffEmployeeCheck');
 
 const LeaveRequestStatus = {
     PENDING: 'Pending',
