@@ -133,7 +133,7 @@ const checkAndUpdateDayOff = () => {
 };
 
 // Schedule the task to run every 5 minutes
-cron.schedule('*/5 * * * *', () => {
+cron.schedule('0 * * * *', () => {
     console.log('Running day off check task...');
     checkAndUpdateDayOff();
 }, {
