@@ -16,6 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const ejs = require('ejs');
 const checkAndUpdateDayOff = require('../cron/scheduleOffEmployeeCheck');
+const resetEmployeeSalaries = require('../cron/updateSalary');
 
 const LeaveRequestStatus = {
     PENDING: 'Pending',
@@ -71,7 +72,7 @@ router.post('/create_employee', [
     check('position').notEmpty().withMessage('Position is required'),
     check('qrcode').notEmpty().withMessage('QR code is required'),
     check('phone_number').isLength({ min: 11, max: 11 }).withMessage('Phone number must be exactly 11 digits'),
-    check('baseSalary').matches(/^[1-9]\d*$/).withMessage('Base salary must not start with 0'),
+    check('basicSalary').matches(/^[1-9]\d*$/).withMessage('Base salary must not start with 0'),
     check('password').notEmpty().withMessage('Password is required'),
     check('leaveCredits').matches(/^[0-9]\d*$/).withMessage('Leave credits must be a number'),
 ], async (req, res) => {
@@ -80,7 +81,7 @@ router.post('/create_employee', [
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { employee_id, name, email, department, position, qrcode, phone_number, baseSalary, password, day_off, avatar, hierarchy, leaveCredits } = req.body;
+    const { employee_id, name, email, department, position, qrcode, phone_number, basicSalary, password, day_off, avatar, hierarchy, leaveCredits } = req.body;
 
     try {
         // Check if an employee with the same email or phone number already exists
@@ -110,7 +111,7 @@ router.post('/create_employee', [
                 position,
                 qrcode,
                 phone_number,
-                baseSalary: parseInt(baseSalary, 10),
+                basicSalary: parseInt(basicSalary, 10),
                 totalSalary: 0, // Set total salary to 0 initially
                 password: hashedPassword,
                 hierarchy: hierarchy || 'employee',
@@ -151,7 +152,7 @@ router.get('/search_employee', async (req, res) => {
     const queryParams = [];
 
     // Search across multiple fields
-    query += ' AND (employee_id LIKE ? OR name LIKE ? OR email LIKE ? OR department LIKE ? OR position LIKE ? OR phone_number LIKE ?)';
+    query += ' AND (employee_id LIKE ? OR name LIKE ? OR email LIKE ? OR department LIKE ? OR position LIKE ? OR phone_number LIKE ? OR hierarchy LIKE ? )';
     const searchPattern = `%${q}%`;
     queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
 
@@ -279,7 +280,7 @@ router.post('/time_in', authMiddleware, async (req, res) => {
     // Prevent time_in during non-working hours (8 PM to 4 AM)
     const hour = now.hour();
     if (hour >= 17 || hour < 4) {
-        return res.status(400).json({ status: 'error', message: 'Cannot time in during non-working hours (8 PM to 4 AM)' });
+        return res.status(400).json({ status: 'error', message: 'Cannot time in during non-working hours (5 PM to 4 AM)' });
     }
 
     // If the user tries to time in earlier than 7 AM, set the time_in to 7 AM
@@ -327,7 +328,7 @@ router.put('/time_out/:id', async (req, res) => {
 
         // Fetch the attendance record
         const attendanceQuery = `
-            SELECT attendance.*, employees.hierarchy, employees.baseSalary
+            SELECT attendance.*, employees.hierarchy, employees.basicSalary
             FROM attendance
             JOIN employees ON attendance.employee_id = employees.employee_id
             WHERE attendance.attendance_id = ?
@@ -343,15 +344,15 @@ router.put('/time_out/:id', async (req, res) => {
             }
 
             const attendanceRecord = attendanceResult[0];
-            const { time_in, hierarchy, baseSalary, time_out: existingTimeOut } = attendanceRecord;
+            const { time_in, hierarchy, basicSalary, time_out: existingTimeOut } = attendanceRecord;
 
             // Check if time_out already has a value
             if (existingTimeOut) {
                 return res.status(400).json({ status: 'error', message: 'Time out already set' });
             }
 
-            // Ensure baseSalary is a valid number
-            if (!baseSalary || isNaN(baseSalary)) {
+            // Ensure basicSalary is a valid number
+            if (!basicSalary || isNaN(basicSalary)) {
                 return res.status(400).json({ status: 'error', message: 'Invalid base salary' });
             }
 
@@ -393,8 +394,8 @@ router.put('/time_out/:id', async (req, res) => {
             let dailySalary = 0;
             let overtimePay = 0;
 
-            if (hierarchy === 'Rank & File' && baseSalary) {
-                const hourlyRate = baseSalary / 8;
+            if (hierarchy === 'Rank & File' && basicSalary) {
+                const hourlyRate = basicSalary / 8;
 
                 // Avoid negative deduction for short work durations
                 if (diffInHours < 8 && diffInHours >= 1) {
@@ -570,11 +571,11 @@ router.put('/employees/:id', [
     check('qrcode').notEmpty().withMessage('QR code is required'),
     check('phone_number').notEmpty().withMessage('Phone number is required')
         .matches(/^[0-9]{11}$/).withMessage('Phone number must be exactly 11 digits and must not contain special characters'),
-    check('baseSalary').isInt({ min: 1 }).withMessage('Base salary must be a positive integer and must not start with 0'),
+    check('basicSalary').isInt({ min: 1 }).withMessage('Base salary must be a positive integer and must not start with 0'),
     check('leaveCredits').isInt({ min: 0 }).withMessage('Leave credits must be a non-negative integer and must not start with 0'),
 ], async (req, res) => {
     const { id } = req.params;
-    const { name, email, department, position, qrcode, phone_number, password, baseSalary, avatar, hierarchy, day_off, leaveCredits } = req.body;
+    const { name, email, department, position, qrcode, phone_number, password, basicSalary, avatar, hierarchy, day_off, leaveCredits } = req.body;
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -640,7 +641,7 @@ router.put('/employees/:id', [
                 department,
                 position,
                 phone_number,
-                baseSalary: parseInt(baseSalary, 10),
+                basicSalary: parseInt(basicSalary, 10),
                 qrcode,
                 avatar: avatar || null,
                 hierarchy: hierarchy || 'employee',
@@ -932,20 +933,27 @@ router.get('/off', (req, res) => {
 
 // get the monthly attendance
 router.get('/monthly_attendance', (req, res) => {
+    const { month, year } = req.query;
+
     const query = `
         SELECT 
             DATE_FORMAT(date, '%M %d') as day, COUNT(*) as attendance_count
         FROM 
             attendance
         WHERE 
-            MONTH(date) = MONTH(CURDATE()) AND YEAR(date) = YEAR(CURDATE())
+            MONTH(date) = ? AND YEAR(date) = ?
         GROUP BY 
             day
         ORDER BY 
             day
     `;
 
-    db.query(query, (err, result) => {
+    const queryParams = [
+        month || moment().format('MM'), // Default to current month if not provided
+        year || moment().format('YYYY') // Default to current year if not provided
+    ];
+
+    db.query(query, queryParams, (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
@@ -997,7 +1005,7 @@ router.get('/payroll', (req, res) => {
 
     const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
     const dataQuery = `
-    SELECT payroll.*, employees.name, employees.avatar
+    SELECT payroll.*, employees.name, employees.hierarchy
     ${baseQuery}
     ORDER BY payroll.created_at ASC
     LIMIT ? OFFSET ?`;
@@ -1036,6 +1044,7 @@ router.get('/payroll', (req, res) => {
     });
 });
 
+
 router.get('/export-payroll', (req, res) => {
     const { startDate, endDate } = req.query;
 
@@ -1047,7 +1056,15 @@ router.get('/export-payroll', (req, res) => {
         ${startDate && endDate ? 'AND DATE(payroll.created_at) BETWEEN ? AND ?' : ''}`;
 
     const dataQuery = `
-    SELECT payroll.*, employees.name, employees.avatar
+    SELECT 
+        payroll.id,
+        payroll.hours_worked,
+        payroll.total_pay,
+        payroll.created_at,
+        payroll.period_start,
+        payroll.period_end,
+        employees.name,
+        employees.avatar
     ${baseQuery}
     ORDER BY payroll.created_at ASC`;
 
@@ -1373,7 +1390,12 @@ router.get('/import-attendance', (req, res) => {
         ${startDate && endDate ? 'AND DATE(attendance.date) BETWEEN ? AND ?' : ''}`;
 
     const dataQuery = `
-    SELECT attendance.*, employees.name, employees.avatar
+    SELECT 
+        attendance.date, 
+        attendance.time_in, 
+        attendance.time_out, 
+        attendance.hours, 
+        employees.name
     ${baseQuery}
     ORDER BY attendance.date ASC`;
 
@@ -1392,8 +1414,7 @@ router.get('/import-attendance', (req, res) => {
             });
         }
     });
-}
-);
+});
 
 
 router.get('/attendance/:id', (req, res) => {
@@ -1702,21 +1723,32 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
 
                     // If withpay is true, update totalSalary
                     if (withpay) {
-                        db.query('SELECT baseSalary FROM employees WHERE employee_id = ?', [leaveRequest.employee_id], (err, result) => {
+                        db.query('SELECT basicSalary, hierarchy FROM employees WHERE employee_id = ?', [leaveRequest.employee_id], (err, result) => {
                             if (err) {
                                 console.error(err);
                                 return res.status(500).json({ status: 'error', message: 'Database error' });
                             }
-
-                            const baseSalary = result[0].baseSalary;
-                            const additionalSalary = baseSalary * leaveRequest.days_requested;
-
-                            db.query('UPDATE employees SET totalSalary = totalSalary + ? WHERE employee_id = ?', [additionalSalary, leaveRequest.employee_id], (err) => {
-                                if (err) {
-                                    console.error(err);
-                                    return res.status(500).json({ status: 'error', message: 'Database error' });
-                                }
-
+                    
+                            const { basicSalary, hierarchy } = result[0];
+                    
+                            if (hierarchy === 'Rank & File') {
+                                const additionalSalary = basicSalary * leaveRequest.days_requested;
+                    
+                                db.query('UPDATE employees SET totalSalary = totalSalary + ? WHERE employee_id = ?', [additionalSalary, leaveRequest.employee_id], (err) => {
+                                    if (err) {
+                                        console.error(err);
+                                        return res.status(500).json({ status: 'error', message: 'Database error' });
+                                    }
+                    
+                                    res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
+                                    if (req.io) {
+                                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                                        req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                                    } else {
+                                        console.error('Socket.io instance not found');
+                                    }
+                                });
+                            } else {
                                 res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
                                 if (req.io) {
                                     req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
@@ -1724,7 +1756,7 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
                                 } else {
                                     console.error('Socket.io instance not found');
                                 }
-                            });
+                            }
                         });
                     } else {
                         res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
@@ -1895,12 +1927,14 @@ router.delete('/employee-requests/:id', async (req, res) => {
 router.post('/employee-requests/:id/approve', [
     check('department').notEmpty().withMessage('Department is required'),
     check('position').notEmpty().withMessage('Position is required'),
-    check('baseSalary').isInt({ min: 1 }).withMessage('Base salary must be a positive integer and must not start with 0'),
+    check('basicSalary').isInt({ min: 1 }).withMessage('Basic salary must be a positive integer and must not start with 0'),
     check('qrcode').notEmpty().withMessage('QR code is required'),
     check('leaveCredits').isInt({ min: 0 }).withMessage('Leave credits must be a non-negative integer and must not start with 0'),
 ], async (req, res) => {
     const { id } = req.params;
-    const { department, position, baseSalary, hierarchy, employee_id, qrcode, leaveCredits } = req.body;
+    const { department, position, basicSalary, hierarchy, employee_id, qrcode, leaveCredits } = req.body;
+
+    console.log('Server-side:', id);
 
     // Check for validation errors
     const errors = validationResult(req);
@@ -1946,7 +1980,7 @@ router.post('/employee-requests/:id/approve', [
                 qrcode,
                 leaveCredits,
                 avatar: '',
-                baseSalary: parseInt(baseSalary, 10) || 0,
+                basicSalary: parseInt(basicSalary, 10) || 0,
                 totalSalary: 0,
                 hierarchy: hierarchy || 'rank & file',
                 day_off: false, // Ensure day_off is a boolean
@@ -2093,12 +2127,21 @@ router.get('/export/:table', (req, res) => {
 router.post('/run-payroll', async (req, res) => {
     console.log('Running payroll');
     try {
+        const result = await resetEmployeeSalaries();
+        console.log(result);
+
+        // Run the next function if resetEmployeeSalaries is successful
         const response = await processPayroll();
         console.log(response);
-        return res.status(200).json({ status: 'Success' })
+        if (req.io) {
+            req.io.emit('payrollUpdate', { message: 'Payroll data updated' });
+        } else {
+            console.error('Socket.io instance not found');
+        }
+        return res.status(200).json({ status: 'Success', message: response });
     } catch (err) {
         console.error(err);
-        return res.status(500).json({ message: err.message });
+        return res.status(500).json({ status: 'Error', message: err.message });
     }
 });
 

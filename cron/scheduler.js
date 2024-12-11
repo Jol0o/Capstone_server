@@ -65,8 +65,9 @@ function processPayroll() {
         endDate = moment().endOf('month').format('YYYY-MM-DD');
     }
 
+    // Add period_start and period_end to payroll entry
     db.query(
-        "SELECT * FROM employees",
+        `SELECT * FROM employees`,
         (err, result) => {
             if (err) {
                 console.error("Database query error:", err);
@@ -107,7 +108,18 @@ function processPayroll() {
                                 const isManagerial = row.hierarchy === "Managerial" || row.hierarchy === "Supervisor";
                                 const value = isManagerial ? manegerialValue : rnfValue;
 
-                                // Check if payroll already exists for today
+                                // Determine period_start and period_end
+                                let period_start, period_end;
+                                if (dayOfMonth <= 5 || dayOfMonth >= 21) {
+                                    // Second half of the month (16th to end of the month)
+                                    period_start = moment().date(16).startOf('day').format('YYYY-MM-DD');
+                                    period_end = moment().endOf('month').format('YYYY-MM-DD');
+                                } else {
+                                    // First half of the month (1st to 15th)
+                                    period_start = moment().startOf('month').format('YYYY-MM-DD');
+                                    period_end = moment().date(15).endOf('day').format('YYYY-MM-DD');
+                                }
+
                                 db.query(
                                     `SELECT * FROM payroll WHERE employee_id = ? AND DATE(created_at) = CURDATE()`,
                                     [employee_id],
@@ -116,16 +128,21 @@ function processPayroll() {
                                             console.error("Database query error:", err);
                                         } else if (payrollResult.length === 0) {
                                             // No payroll entry for today, proceed with insertion
-                                            db.query(`INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay) VALUES (?,?,?,?)`, value, (err) => {
-                                                if (err) {
-                                                    console.error(err);
-                                                } else {
-                                                    console.log(`Payroll processed for employee_id ${employee_id}`);
+                                            db.query(
+                                                `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end) 
+                                             VALUES (?,?,?,?,?,?)`,
+                                                [...value, period_start, period_end],
+                                                (err) => {
+                                                    if (err) {
+                                                        console.error(err);
+                                                    } else {
+                                                        console.log(`Payroll processed for employee_id ${employee_id}`);
+                                                    }
                                                 }
-                                            });
+                                            );
 
                                             console.log(number);
-                                            const message = `Hello, ${row.name}. Your salary for the period from ${startDate} to ${endDate} has been processed. Please check your account. PHP${row.monthSalary} for working hours ${totalHours}.`;
+                                            const message = `Hello, ${row.name}. Your salary for the period from ${period_start} to ${period_end} has been processed. Please check your account. PHP${row.monthSalary} for working hours ${totalHours}.`;
                                             console.log(message);
                                             const run = async () => {
                                                 const to = "63" + number;
@@ -176,6 +193,7 @@ function processPayroll() {
             }
         }
     );
+
 }
 
 // Schedule the cron job

@@ -37,7 +37,7 @@ model employees {
   avatar          String?
   email           String    @unique
   phone_number    String    @unique
-  baseSalary      Int       @default(0) // Provide a default value
+  basicSalary      Int       @default(0) // Provide a default value
   totalSalary     Int       @default(0) // Provide a default value
   monthSalary     Int       @default(0) // Provide a default value
   password        String
@@ -90,6 +90,8 @@ model payroll {
   hours_worked Float
   total_pay    Float
   created_at   DateTime @default(now())
+  period_start DateTime
+  period_end   DateTime
   employee     employees @relation(fields: [employee_id], references: [employee_id])
 }
 
