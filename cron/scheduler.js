@@ -104,7 +104,7 @@ function processPayroll() {
                                 }, 0);
 
                                 const rnfValue = [payroll_id, employee_id, totalHours, row.monthSalary];
-                                const manegerialValue = [payroll_id, employee_id, totalHours, row.baseSalary];
+                                const manegerialValue = [payroll_id, employee_id, totalHours, row.basicSalary];
                                 const isManagerial = row.hierarchy === "Managerial" || row.hierarchy === "Supervisor";
                                 const value = isManagerial ? manegerialValue : rnfValue;
 
