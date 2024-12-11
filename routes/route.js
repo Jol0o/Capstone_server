@@ -966,20 +966,26 @@ router.get('/monthly_attendance', (req, res) => {
 
 // get the yearly attendance data 
 router.get('/yearly_attendance', (req, res) => {
+    const { year } = req.query;
+
     const query = `
         SELECT 
             MONTHNAME(date) as month, COUNT(*) as attendance_count
         FROM 
             attendance
         WHERE 
-            YEAR(date) = YEAR(CURDATE())
+            YEAR(date) = ?
         GROUP BY 
             month
         ORDER BY 
             FIELD(month, 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December')
     `;
 
-    db.query(query, (err, result) => {
+    const queryParams = [
+        year || moment().format('YYYY') // Default to current year if not provided
+    ];
+
+    db.query(query, queryParams, (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error' });
