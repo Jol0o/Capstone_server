@@ -90,8 +90,8 @@ model payroll {
   hours_worked Float
   total_pay    Float
   created_at   DateTime @default(now())
-  period_start DateTime
-  period_end   DateTime
+  period_start DateTime @default(dbgenerated("CURRENT_DATE"))
+  period_end   DateTime @default(dbgenerated("CURRENT_DATE"))
   employee     employees @relation(fields: [employee_id], references: [employee_id])
 }
 
