@@ -160,18 +160,18 @@ function processPayroll() {
                                                 });
                                             };
 
-                                            async function sendSMS(to, from, text) {
-                                                await vonage.sms.send({ to, from, text })
-                                                    .then(resp => {
-                                                        console.log('Message sent successfully');
-                                                        console.log(resp);
-                                                    })
-                                                    .catch(err => {
-                                                        console.log('There was an error sending the messages.');
-                                                        console.error(err);
-                                                    });
-                                            }
-                                            run();
+                                            // async function sendSMS(to, from, text) {
+                                            //     await vonage.sms.send({ to, from, text })
+                                            //         .then(resp => {
+                                            //             console.log('Message sent successfully');
+                                            //             console.log(resp);
+                                            //         })
+                                            //         .catch(err => {
+                                            //             console.log('There was an error sending the messages.');
+                                            //             console.error(err);
+                                            //         });
+                                            // }
+                                            // run();
 
                                             // Reset monthSalary to 0
                                             db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id], (err) => {
