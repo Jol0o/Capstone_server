@@ -646,7 +646,7 @@ router.put('/employees/:id', [
                 hierarchy: hierarchy || 'Rank & File',
                 day_off: Boolean(day_off), // Ensure day_off is a boolean
                 leaveCredits: parseInt(leaveCredits, 10),
-                totalSalary: hierarchy === 'Rank & File' ? parseInt(basicSalary, 10) : existingEmployee.totalSalary // Set totalSalary if hierarchy is Rank & File
+                totalSalary: hierarchy !== 'Rank & File' ? parseInt(basicSalary, 10) : existingEmployee.totalSalary // Set totalSalary if hierarchy is Rank & File
             }
         });
 
