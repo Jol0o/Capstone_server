@@ -1501,96 +1501,107 @@ router.post('/leave_request', [
 
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
 
-    // Fetch leaveCredits from employees table
-    db.query('SELECT leaveCredits FROM employees WHERE employee_id = ?', [employee_id], (err, result) => {
+    // Check for existing leave requests
+    db.query('SELECT * FROM leaveRequest WHERE employee_id = ? AND status NOT IN (?, ?)', [employee_id, 'Rejected', 'Done'], (err, existingRequests) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ status: 'error', message: 'Database error' });
         }
 
-        const leaveCredits = result[0].leaveCredits;
-
-        // Check if daysRequested is not greater than leaveCredits
-        if (daysRequested > leaveCredits) {
-            return res.status(400).json({ status: 'error', message: 'Requested days exceed available leave credits' });
+        if (existingRequests.length > 0) {
+            return res.status(400).json({ status: 'error', message: 'You already have a pending or approved leave request' });
         }
 
-        let parsedDistributionCopy;
-        try {
-            // Only parse if it's a string that looks like JSON
-            if (typeof distributionCopy === 'string') {
-                parsedDistributionCopy = JSON.parse(distributionCopy);
-            } else {
-                // If it's already an object, no need to parse
-                parsedDistributionCopy = distributionCopy;
-            }
-        } catch (error) {
-            console.error('JSON parse error:', error);
-            return res.status(400).json({ status: 'error', message: 'Invalid distribution copy format' });
-        }
-
-        const query = `
-            INSERT INTO leaveRequest(
-                employee_id, leave_type, reason, days_requested, department, distribution_copy, email, inclusive_dates, name, person_to_takeover, position, requested_by, supporting_document, to_date
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-        const values = [
-            employee_id, leaveType, reason, daysRequested, department, JSON.stringify(parsedDistributionCopy), email, new Date(inclusiveDates), name, personToTakeover, position, requestedBy, supportingDocumentUrl, new Date(toDate)
-        ];
-
-        db.query(query, values, (err, result) => {
+        // Fetch leaveCredits from employees table
+        db.query('SELECT leaveCredits FROM employees WHERE employee_id = ?', [employee_id], (err, result) => {
             if (err) {
                 console.error(err);
-                res.status(500).json({ status: 'error', message: 'Database error' });
-            } else {
-                // Fetch admin emails
-                db.query('SELECT email FROM admin', async (err, adminResult) => {
-                    if (err) {
-                        console.error('Error fetching admin emails:', err);
-                        return res.status(500).json({ status: 'error', message: 'Database error' });
-                    }
-
-                    const adminEmails = adminResult.map(admin => admin.email);
-
-                    const emailTemplate = await loadEmailTemplate('employee_request', {
-                        name,
-                        leaveType,
-                        reason,
-                        daysRequested,
-                        department,
-                        position,
-                        requestedBy,
-                        inclusiveDates,
-                        toDate
-                    });
-
-                    // Send email to all admins
-                    const mailOptions = {
-                        from: 'your-email@gmail.com',
-                        to: adminEmails,
-                        subject: 'New Leave Request Submitted',
-                        html: emailTemplate
-                    };
-
-                    transporter.sendMail(mailOptions, (error, info) => {
-                        if (error) {
-                            console.error('Error sending email:', error);
-                            return res.status(500).json({ status: 'error', message: 'Failed to send email' });
-                        }
-                        console.log('Email sent: ' + info.response);
-                        res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
-                        if (req.io) {
-                            req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-                        } else {
-                            console.error('Socket.io instance not found');
-                        }
-                    });
-                });
+                return res.status(500).json({ status: 'error', message: 'Database error' });
             }
+
+            const leaveCredits = result[0].leaveCredits;
+
+            // Check if daysRequested is not greater than leaveCredits
+            if (daysRequested > leaveCredits) {
+                return res.status(400).json({ status: 'error', message: 'Requested days exceed available leave credits' });
+            }
+
+            let parsedDistributionCopy;
+            try {
+                // Only parse if it's a string that looks like JSON
+                if (typeof distributionCopy === 'string') {
+                    parsedDistributionCopy = JSON.parse(distributionCopy);
+                } else {
+                    // If it's already an object, no need to parse
+                    parsedDistributionCopy = distributionCopy;
+                }
+            } catch (error) {
+                console.error('JSON parse error:', error);
+                return res.status(400).json({ status: 'error', message: 'Invalid distribution copy format' });
+            }
+
+            const query = `
+                INSERT INTO leaveRequest(
+                    employee_id, leave_type, reason, days_requested, department, distribution_copy, email, inclusive_dates, name, person_to_takeover, position, requested_by, supporting_document, to_date
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            const values = [
+                employee_id, leaveType, reason, daysRequested, department, JSON.stringify(parsedDistributionCopy), email, new Date(inclusiveDates), name, personToTakeover, position, requestedBy, supportingDocumentUrl, new Date(toDate)
+            ];
+
+            db.query(query, values, (err, result) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ status: 'error', message: 'Database error' });
+                } else {
+                    // Fetch admin emails
+                    db.query('SELECT email FROM admin', async (err, adminResult) => {
+                        if (err) {
+                            console.error('Error fetching admin emails:', err);
+                            return res.status(500).json({ status: 'error', message: 'Database error' });
+                        }
+
+                        const adminEmails = adminResult.map(admin => admin.email);
+
+                        const emailTemplate = await loadEmailTemplate('employee_request', {
+                            name,
+                            leaveType,
+                            reason,
+                            daysRequested,
+                            department,
+                            position,
+                            requestedBy,
+                            inclusiveDates,
+                            toDate
+                        });
+
+                        // Send email to all admins
+                        const mailOptions = {
+                            from: 'your-email@gmail.com',
+                            to: adminEmails,
+                            subject: 'New Leave Request Submitted',
+                            html: emailTemplate
+                        };
+
+                        transporter.sendMail(mailOptions, (error, info) => {
+                            if (error) {
+                                console.error('Error sending email:', error);
+                                return res.status(500).json({ status: 'error', message: 'Failed to send email' });
+                            }
+                            console.log('Email sent: ' + info.response);
+                            res.status(200).json({ status: 'ok', message: 'Leave request submitted successfully' });
+                            if (req.io) {
+                                req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                            } else {
+                                console.error('Socket.io instance not found');
+                            }
+                        });
+                    });
+                }
+            });
         });
     });
 });
-
 router.post('/check-leave-requests', (req, res) => {
     try {
         checkAndUpdateDayOff();
