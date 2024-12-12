@@ -1519,6 +1519,10 @@ router.post('/leave_request', [
                 return res.status(500).json({ status: 'error', message: 'Database error' });
             }
 
+            if (!result || result.length === 0 || result[0].leaveCredits === undefined) {
+                return res.status(400).json({ status: 'error', message: 'Leave credits not found' });
+            }
+
             const leaveCredits = result[0].leaveCredits;
 
             // Check if daysRequested is not greater than leaveCredits
@@ -1602,6 +1606,8 @@ router.post('/leave_request', [
         });
     });
 });
+
+
 router.post('/check-leave-requests', (req, res) => {
     try {
         checkAndUpdateDayOff();
