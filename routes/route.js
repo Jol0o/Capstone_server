@@ -630,7 +630,6 @@ router.put('/employees/:id', [
             hashedPassword = existingEmployee.password;
         }
 
-        // Convert salary_date to the correct format
         // Update employee data
         const updatedEmployee = await prisma.employees.update({
             where: { id: parseInt(id, 10) },
@@ -644,9 +643,10 @@ router.put('/employees/:id', [
                 basicSalary: parseInt(basicSalary, 10),
                 qrcode,
                 avatar: avatar || null,
-                hierarchy: hierarchy || 'employee',
+                hierarchy: hierarchy || 'Rank & File',
                 day_off: Boolean(day_off), // Ensure day_off is a boolean
-                leaveCredits: parseInt(leaveCredits, 10)
+                leaveCredits: parseInt(leaveCredits, 10),
+                totalSalary: hierarchy === 'Rank & File' ? parseInt(basicSalary, 10) : existingEmployee.totalSalary // Set totalSalary if hierarchy is Rank & File
             }
         });
 
@@ -2004,7 +2004,7 @@ router.post('/employee-requests/:id/approve', [
                 leaveCredits,
                 avatar: '',
                 basicSalary: parseInt(basicSalary, 10) || 0,
-                totalSalary: 0,
+                totalSalary: parseInt(basicSalary, 10) || 0,
                 hierarchy: hierarchy || 'rank & file',
                 day_off: false, // Ensure day_off is a boolean
             }
