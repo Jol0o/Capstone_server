@@ -2004,8 +2004,8 @@ router.post('/employee-requests/:id/approve', [
                 leaveCredits,
                 avatar: '',
                 basicSalary: parseInt(basicSalary, 10) || 0,
-                totalSalary: parseInt(basicSalary, 10) || 0,
-                hierarchy: hierarchy || 'rank & file',
+                totalSalary: hierarchy !== 'Rank & File' ? (parseInt(basicSalary, 10) || 0) : 0,
+                hierarchy: hierarchy || 'Rank & File',
                 day_off: false, // Ensure day_off is a boolean
             }
         });
