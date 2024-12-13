@@ -1744,57 +1744,19 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
                         return res.status(500).json({ status: 'error', message: 'Database error' });
                     }
 
-                    // If withpay is true, update totalSalary
-                    if (withpay) {
-                        db.query('SELECT basicSalary, hierarchy FROM employees WHERE employee_id = ?', [leaveRequest.employee_id], (err, result) => {
-                            if (err) {
-                                console.error(err);
-                                return res.status(500).json({ status: 'error', message: 'Database error' });
-                            }
-                    
-                            const { basicSalary, hierarchy } = result[0];
-                    
-                            if (hierarchy === 'Rank & File') {
-                                const additionalSalary = basicSalary * leaveRequest.days_requested;
-                    
-                                db.query('UPDATE employees SET totalSalary = totalSalary + ? WHERE employee_id = ?', [additionalSalary, leaveRequest.employee_id], (err) => {
-                                    if (err) {
-                                        console.error(err);
-                                        return res.status(500).json({ status: 'error', message: 'Database error' });
-                                    }
-                    
-                                    res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
-                                    if (req.io) {
-                                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                                        req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-                                    } else {
-                                        console.error('Socket.io instance not found');
-                                    }
-                                });
-                            } else {
-                                res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
-                                if (req.io) {
-                                    req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                                    req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-                                } else {
-                                    console.error('Socket.io instance not found');
-                                }
-                            }
-                        });
+                    res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
+                    if (req.io) {
+                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                        req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
                     } else {
-                        res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
-                        if (req.io) {
-                            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                            req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-                        } else {
-                            console.error('Socket.io instance not found');
-                        }
+                        console.error('Socket.io instance not found');
                     }
                 });
             });
         });
     });
 });
+
 
 router.delete('/leave_request/:id', (req, res) => {
     const { id } = req.params;

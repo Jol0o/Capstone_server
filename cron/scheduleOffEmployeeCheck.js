@@ -25,7 +25,7 @@ const checkAndUpdateDayOff = () => {
                     const inclusiveDate = moment(row.inclusive_dates).format('YYYY-MM-DD');
                     return inclusiveDate === currentDate;
                 });
-
+    
                 filteredResults.forEach((row) => {
                     const q = 'UPDATE employees SET day_off = ? WHERE employee_id = ?';
                     db.query(q, [true, row.employee_id], (err, result) => {
@@ -33,6 +33,26 @@ const checkAndUpdateDayOff = () => {
                             console.error("Database query error:", err);
                         } else {
                             console.log(`Employee ${row.employee_id} has been checked off`);
+    
+                            // Update totalSalary if withpay is true
+                            if (row.withpay) {
+                                db.query('SELECT basicSalary FROM employees WHERE employee_id = ?', [row.employee_id], (err, salaryResult) => {
+                                    if (err) {
+                                        console.error("Database query error:", err);
+                                    } else {
+                                        const basicSalary = salaryResult[0].basicSalary;
+                                        const additionalSalary = basicSalary * row.days_requested;
+    
+                                        db.query('UPDATE employees SET totalSalary = totalSalary + ? WHERE employee_id = ?', [additionalSalary, row.employee_id], (err) => {
+                                            if (err) {
+                                                console.error("Database query error:", err);
+                                            } else {
+                                                console.log(`Employee ${row.employee_id} totalSalary updated with additional ${additionalSalary}`);
+                                            }
+                                        });
+                                    }
+                                });
+                            }
                         }
                     });
                 });
