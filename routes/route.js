@@ -827,8 +827,8 @@ router.get('/late_employees', (req, res) => {
 router.get('/early_departures', (req, res) => {
     const query = `
         SELECT 
-            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '19:00:00' AND DATE(date) = CURDATE() AND time_out != '' THEN 1 END) AS count_today,
-            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '19:00:00' AND DATE(date) = CURDATE() - INTERVAL 1 DAY AND time_out != '' THEN 1 END) AS count_yesterday
+            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '17:00:00' AND DATE(date) = CURDATE() AND time_out != '' THEN 1 END) AS count_today,
+            COUNT(CASE WHEN STR_TO_DATE(time_out, '%h:%i %p') < '17:00:00' AND DATE(date) = CURDATE() - INTERVAL 1 DAY AND time_out != '' THEN 1 END) AS count_yesterday
         FROM 
             attendance
         WHERE 
