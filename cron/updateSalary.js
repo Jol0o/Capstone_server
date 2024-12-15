@@ -9,13 +9,17 @@ if (!db) {
 }
 
 const resetEmployeeSalaries = () => {
-    const query = `
+        const query = `
         UPDATE employees
-        SET monthSalary = CASE
-            WHEN hierarchy = 'Rank & File' THEN totalSalary
-            ELSE basicSalary
-        END,
-        totalSalary = 0
+        SET 
+            monthSalary = CASE
+                WHEN hierarchy = 'Rank & File' THEN totalSalary
+                ELSE basicSalary
+            END,
+            totalSalary = CASE
+                WHEN hierarchy = 'Rank & File' THEN 0
+                ELSE totalSalary
+            END
     `;
 
     return new Promise((resolve, reject) => {
