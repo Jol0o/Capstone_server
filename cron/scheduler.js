@@ -53,10 +53,9 @@ function processPayroll() {
     console.log("Payroll processing started");
     const currentDate = moment().tz('Asia/Manila');
     const dayOfMonth = currentDate.date();
-    const month = currentDate.month() + 1;
-    const year = currentDate.year();
     let startDate, endDate;
 
+    // Correct payroll period calculation
     if (dayOfMonth <= 15) {
         startDate = moment().startOf('month').format('YYYY-MM-DD');
         endDate = moment().date(15).format('YYYY-MM-DD');
@@ -65,135 +64,148 @@ function processPayroll() {
         endDate = moment().endOf('month').format('YYYY-MM-DD');
     }
 
-    // Add period_start and period_end to payroll entry
     db.query(
         `SELECT * FROM employees`,
-        (err, result) => {
+        (err, employees) => {
             if (err) {
                 console.error("Database query error:", err);
-            } else {
-                result.forEach((row) => {
-                    console.log('running payroll processing');
-                    const number = row.phone_number;
-                    let totalHours = 0;
-                    const employee_id = row.employee_id;
+                return;
+            }
 
-                    function generateUUID() {
-                        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-                            const r = (Math.random() * 16) | 0,
-                                v = c === 'x' ? r : (r & 0x3) | 0x8;
-                            return v.toString(16);
-                        });
-                    }
-                    const payroll_id = generateUUID();
-                    const notification_id = generateUUID();
+            employees.forEach((employee) => {
+                const { employee_id, phone_number, name, monthSalary, basicSalary, hierarchy, email } = employee;
+                const isManagerial = hierarchy === "Managerial" || hierarchy === "Supervisor";
+                const salary = isManagerial ? basicSalary : monthSalary;
 
-                    db.query(
-                        `SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?`,
-                        [employee_id, startDate, endDate],
-                        (err, attendanceResult) => {
-                            if (err) {
-                                console.error("Database query error:", err);
-                            } else {
-                                totalHours = attendanceResult.reduce((total, attendance) => {
-                                    console.log(`Attendance record: ${JSON.stringify(attendance)}`);
-                                    if (attendance.hours < 0) {
-                                        console.warn(`Negative hours detected for employee_id ${employee_id} on date ${attendance.date}: ${attendance.hours}`);
-                                    }
-                                    return total + Math.max(0, attendance.hours);
-                                }, 0);
+                let totalHours = 0;
+                let absences = 0;
 
-                                const rnfValue = [payroll_id, employee_id, totalHours, row.monthSalary];
-                                const manegerialValue = [payroll_id, employee_id, totalHours, row.basicSalary];
-                                const isManagerial = row.hierarchy === "Managerial" || row.hierarchy === "Supervisor";
-                                const value = isManagerial ? manegerialValue : rnfValue;
+                const payroll_id = generateUUID();
+                const notification_id = generateUUID();
 
-                                // Determine period_start and period_end
-                                let period_start, period_end;
-                                if (dayOfMonth <= 5 || dayOfMonth >= 21) {
-                                    // Second half of the month (16th to end of the month)
-                                    period_start = moment().date(16).startOf('day').format('YYYY-MM-DD');
-                                    period_end = moment().endOf('month').format('YYYY-MM-DD');
-                                } else {
-                                    // First half of the month (1st to 15th)
-                                    period_start = moment().startOf('month').format('YYYY-MM-DD');
-                                    period_end = moment().date(15).endOf('day').format('YYYY-MM-DD');
+                db.query(
+                    `SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?`,
+                    [employee_id, startDate, endDate],
+                    (err, attendanceResult) => {
+                        if (err) {
+                            console.error("Attendance query error:", err);
+                            return;
+                        }
+
+                        // Calculate total hours
+                        totalHours = attendanceResult.reduce((total, attendance) => {
+                            return total + Math.max(0, attendance.hours);
+                        }, 0);
+
+                        // Determine all workdays (excluding Sundays)
+                        const periodDays = [];
+                        for (let day = moment(startDate); day.isBefore(endDate) || day.isSame(endDate); day.add(1, 'days')) {
+                            if (day.day() !== 0) { // Exclude Sundays
+                                periodDays.push(day.format('YYYY-MM-DD'));
+                            }
+                        }
+
+                        db.query(
+                            `SELECT inclusive_dates, to_date FROM leaverequest WHERE employee_id = ? AND status IN ('approved', 'done')`,
+                            [employee_id],
+                            (err, leaveResult) => {
+                                if (err) {
+                                    console.error("Leave query error:", err);
+                                    return;
                                 }
+
+                                // Collect leave dates
+                                const leaveDates = new Set();
+                                leaveResult.forEach(leave => {
+                                    const leaveStart = moment(leave.inclusive_dates);
+                                    const leaveEnd = moment(leave.to_date);
+                                    for (let day = leaveStart; day.isBefore(leaveEnd) || day.isSame(leaveEnd); day.add(1, 'days')) {
+                                        leaveDates.add(day.format('YYYY-MM-DD'));
+                                    }
+                                });
+
+                                // Calculate absences (workdays not in attendance or leave)
+                                absences = periodDays.filter(day =>
+                                    !attendanceResult.some(attendance => attendance.date === day) &&
+                                    !leaveDates.has(day)
+                                ).length;
 
                                 db.query(
                                     `SELECT * FROM payroll WHERE employee_id = ? AND DATE(created_at) = CURDATE()`,
                                     [employee_id],
                                     (err, payrollResult) => {
                                         if (err) {
-                                            console.error("Database query error:", err);
-                                        } else if (payrollResult.length === 0) {
-                                            // No payroll entry for today, proceed with insertion
+                                            console.error("Payroll query error:", err);
+                                            return;
+                                        }
+
+                                        if (payrollResult.length === 0) {
                                             db.query(
-                                                `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end) 
-                                             VALUES (?,?,?,?,?,?)`,
-                                                [...value, period_start, period_end],
+                                                `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end, absent) 
+                                                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                                                [payroll_id, employee_id, totalHours, salary, startDate, endDate, absences],
                                                 (err) => {
                                                     if (err) {
-                                                        console.error(err);
+                                                        console.error("Payroll insertion error:", err);
                                                     } else {
                                                         console.log(`Payroll processed for employee_id ${employee_id}`);
+
+                                                        const message = `Hello, ${name}. Your salary for the period from ${startDate} to ${endDate} has been processed. PHP${salary} for ${totalHours} hours worked. Absences: ${absences}.`;
+                                                        sendNotifications(employee_id, phone_number, email, message, notification_id);
+
+                                                        db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id]);
                                                     }
                                                 }
                                             );
-
-                                            console.log(number);
-                                            const message = `Hello, ${row.name}. Your salary for the period from ${period_start} to ${period_end} has been processed. Please check your account. PHP${row.monthSalary} for working hours ${totalHours}.`;
-                                            console.log(message);
-                                            const run = async () => {
-                                                const to = "63" + number;
-                                                const from = "Vonage APIs";
-                                                const text = message;
-
-                                                await sendSMS(to, from, text);
-                                                await sendEmail(row.email, row.name, message, 'employee_payslip');
-                                                db.query(`INSERT INTO smsNotification (notification_id, employee_id, phone_number , message) VALUES (?,?,?,?)`, [notification_id, employee_id, number, message], (err) => {
-                                                    if (err) {
-                                                        console.error(err);
-                                                    } else {
-                                                        console.log(`SMS notification sent to employee_id ${employee_id}`);
-                                                    }
-                                                });
-                                            };
-
-                                            // async function sendSMS(to, from, text) {
-                                            //     await vonage.sms.send({ to, from, text })
-                                            //         .then(resp => {
-                                            //             console.log('Message sent successfully');
-                                            //             console.log(resp);
-                                            //         })
-                                            //         .catch(err => {
-                                            //             console.log('There was an error sending the messages.');
-                                            //             console.error(err);
-                                            //         });
-                                            // }
-                                            // run();
-
-                                            // Reset monthSalary to 0
-                                            db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id], (err) => {
-                                                if (err) {
-                                                    console.error(err);
-                                                } else {
-                                                    console.log(`monthSalary reset to 0 for employee_id ${employee_id}`);
-                                                }
-                                            });
                                         } else {
                                             console.log(`Payroll already processed for employee_id ${employee_id} today.`);
                                         }
                                     }
                                 );
                             }
-                        }
-                    );
-                });
-            }
+                        );
+                    }
+                );
+            });
         }
     );
+}
 
+function sendNotifications(employee_id, phone_number, email, message, notification_id) {
+    const to = "63" + phone_number;
+    const from = "Vonage APIs";
+
+    sendSMS(to, from, message);
+    sendEmail(email, employee_id, message, 'employee_payslip');
+
+    db.query(
+        `INSERT INTO smsNotification (notification_id, employee_id, phone_number, message) VALUES (?, ?, ?, ?)`,
+        [notification_id, employee_id, phone_number, message],
+        (err) => {
+            if (err) console.error("SMS Notification insertion error:", err);
+            else console.log(`SMS notification logged for employee_id ${employee_id}`);
+        }
+    );
+}
+
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+}
+
+async function sendSMS(to, from, text) {
+    // await vonage.sms.send({ to, from, text })
+    //     .then(resp => {
+    //         console.log('Message sent successfully');
+    //         console.log(resp);
+    //     })
+    //     .catch(err => {
+    //         console.log('There was an error sending the messages.');
+    //         console.error(err);
+    //     });
 }
 
 // Schedule the cron job

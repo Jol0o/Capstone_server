@@ -92,6 +92,7 @@ model payroll {
   created_at   DateTime  @default(now())
   period_start DateTime? @default(dbgenerated())
   period_end   DateTime? @default(dbgenerated())
+  absent       Int       @default(0)
   employee     employees @relation(fields: [employee_id], references: [employee_id])
 }
 
