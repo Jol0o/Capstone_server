@@ -1317,7 +1317,7 @@ router.get('/user-attendance/:id', (req, res) => {
                         status = 'off duty';
                     } else if (record.time_in) {
                         // If the employee has a time-in record, adjust status accordingly
-                        status = timeIn.isBefore(eightAM) ? 'present' : 'late';
+                        status = timeIn.isSameOrBefore(eightAM) ? 'present' : 'late';
                     }
 
                     // Check for gaps in dates and add "absent" status for missing dates
