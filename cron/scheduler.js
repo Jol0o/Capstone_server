@@ -106,7 +106,7 @@ function processPayroll() {
                         }
 
                         db.query(
-                            `SELECT inclusive_dates, to_date FROM leaverequest WHERE employee_id = ? AND status IN ('approved', 'done')`,
+                            `SELECT inclusive_dates, to_date FROM leaveRequest WHERE employee_id = ? AND status IN ('approved', 'done')`,
                             [employee_id],
                             (err, leaveResult) => {
                                 if (err) {
