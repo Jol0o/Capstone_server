@@ -133,7 +133,7 @@ model employeeRequest {
 
 enum LeaveRequestStatus {
   Pending
-  Process
+  Processing
   Approved
   Rejected
   Done

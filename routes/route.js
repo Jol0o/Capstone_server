@@ -376,7 +376,7 @@ router.put('/time_out/:id', async (req, res) => {
 
             // Calculate the difference in milliseconds
             const diffInMilliseconds = timeOutDate.diff(timeInDate);
-            const diffInHours = Math.floor(diffInMilliseconds / (1000 * 60 * 60)); // Only consider full hours
+            let diffInHours = Math.floor(diffInMilliseconds / (1000 * 60 * 60)); // Only consider full hours
             const diffInMinutes = (diffInMilliseconds % (1000 * 60 * 60)) / (1000 * 60); // Remaining minutes
 
             // Validate the time difference
@@ -387,6 +387,12 @@ router.put('/time_out/:id', async (req, res) => {
             // Validate the time difference
             if (isNaN(diffInHours) || (diffInHours === 0 && diffInMinutes < 10)) {
                 return res.status(400).json({ status: 'error', message: 'Invalid time difference' });
+            }
+
+            // Automatically set hours to 8 if time out is after 5 PM
+            const fivePM = moment.tz(`${now.format('YYYY-MM-DD')} 05:00 PM`, 'YYYY-MM-DD hh:mm A', 'Asia/Manila');
+            if (timeOutDate.isAfter(fivePM)) {
+                diffInHours = 8;
             }
 
             // Calculate salary deduction if hierarchy is "Rank & File"
@@ -646,7 +652,7 @@ router.put('/employees/:id', [
                 hierarchy: hierarchy || 'Rank & File',
                 day_off: Boolean(day_off), // Ensure day_off is a boolean
                 leaveCredits: parseInt(leaveCredits, 10),
-                totalSalary: hierarchy !== 'Rank & File' ? parseInt(basicSalary, 10) : existingEmployee.totalSalary // Set totalSalary if hierarchy is Rank & File
+                totalSalary: hierarchy !== 'Rank & File' ? parseInt(basicSalary / 2, 10) : existingEmployee.totalSalary // Set totalSalary if hierarchy is Rank & File
             }
         });
 
@@ -2153,7 +2159,7 @@ router.post('/employee-requests/:id/approve', [
                 leaveCredits,
                 avatar: '',
                 basicSalary: parseInt(basicSalary, 10) || 0,
-                totalSalary: hierarchy !== 'Rank & File' ? (parseInt(basicSalary, 10) || 0) : 0,
+                totalSalary: hierarchy !== 'Rank & File' ? (parseInt(basicSalary / 2, 10) || 0) : 0,
                 hierarchy: hierarchy || 'Rank & File',
                 day_off: false, // Ensure day_off is a boolean
             }

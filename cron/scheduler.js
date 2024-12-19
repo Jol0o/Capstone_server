@@ -52,18 +52,55 @@ async function sendEmail(to, name, message, template) {
 function processPayroll() {
     console.log("Payroll processing started");
     const currentDate = moment().tz('Asia/Manila');
-    const dayOfMonth = currentDate.date();
+
     let startDate, endDate;
 
-    // Correct payroll period calculation
-    if (dayOfMonth <= 15) {
-        startDate = moment().startOf('month').format('YYYY-MM-DD');
-        endDate = moment().date(15).format('YYYY-MM-DD');
-    } else {
-        startDate = moment().date(16).format('YYYY-MM-DD');
-        endDate = moment().endOf('month').format('YYYY-MM-DD');
-    }
+    // Determine last processed payroll period
+    db.query(
+        "SELECT MAX(period_end) AS last_end_date FROM payroll",
+        (err, result) => {
+            if (err) {
+                console.error("Database query error:", err);
+                return;
+            }
 
+            const lastEndDate = result[0]?.last_end_date
+                ? moment(result[0].last_end_date)
+                : null;
+
+            if (lastEndDate) {
+                // If the last payroll ended on the 15th, the next period is 16th to end of the same month
+                if (lastEndDate.date() === 15) {
+                    startDate = lastEndDate.clone().add(1, 'day').format('YYYY-MM-DD');
+                    endDate = lastEndDate.clone().endOf('month').format('YYYY-MM-DD');
+                }
+                // If the last payroll ended on the last day of a month, the next period is 1st to 15th of the next month
+                else if (lastEndDate.isSame(lastEndDate.clone().endOf('month'), 'day')) {
+                    startDate = lastEndDate.clone().add(1, 'day').startOf('month').format('YYYY-MM-DD');
+                    endDate = lastEndDate.clone().add(1, 'month').date(15).format('YYYY-MM-DD');
+                } else {
+                    console.error("Unexpected payroll end date:", lastEndDate.format('YYYY-MM-DD'));
+                    return;
+                }
+            } else {
+                // No payroll found; start with the first period of the current month
+                if (currentDate.date() <= 15) {
+                    startDate = currentDate.clone().startOf('month').format('YYYY-MM-DD');
+                    endDate = currentDate.clone().date(15).format('YYYY-MM-DD');
+                } else {
+                    startDate = currentDate.clone().date(16).format('YYYY-MM-DD');
+                    endDate = currentDate.clone().endOf('month').format('YYYY-MM-DD');
+                }
+            }
+
+            console.log(`Processing payroll for period: ${startDate} to ${endDate}`);
+            processPayrollForPeriod(startDate, endDate);
+        }
+    );
+}
+
+
+function processPayrollForPeriod(startDate, endDate) {
     db.query(
         `SELECT * FROM employees`,
         (err, employees) => {
@@ -73,12 +110,13 @@ function processPayroll() {
             }
 
             employees.forEach((employee) => {
-                const { employee_id, phone_number, name, monthSalary, basicSalary, hierarchy, email } = employee;
+                                const { employee_id, phone_number, name, basicSalary, hierarchy, email, totalSalary: grossPay } = employee;
                 const isManagerial = hierarchy === "Managerial" || hierarchy === "Supervisor";
-                const salary = isManagerial ? basicSalary : monthSalary;
 
                 let totalHours = 0;
                 let absences = 0;
+                let totalSalary = 0;
+                let totalOvertimePay = 0;
 
                 const payroll_id = generateUUID();
                 const notification_id = generateUUID();
@@ -92,10 +130,23 @@ function processPayroll() {
                             return;
                         }
 
-                        // Calculate total hours
-                        totalHours = attendanceResult.reduce((total, attendance) => {
-                            return total + Math.max(0, attendance.hours);
-                        }, 0);
+                        // Calculate total hours and salary for the period
+                        attendanceResult.forEach((attendance) => {
+                            const hoursWorked = Math.max(0, attendance.hours); // Ensure no negative hours
+                            totalHours += hoursWorked;
+
+                            if (!isManagerial && basicSalary) {
+                                const hourlyRate = basicSalary / 8;
+                                const regularHours = Math.min(hoursWorked, 8);
+                                const overtimeHours = Math.max(0, hoursWorked - 8);
+
+                                const dailySalary = hourlyRate * regularHours;
+                                const overtimePay = hourlyRate * 1.3 * overtimeHours;
+
+                                totalSalary += dailySalary;
+                                totalOvertimePay += overtimePay;
+                            }
+                        });
 
                         // Determine all workdays (excluding Sundays)
                         const periodDays = [];
@@ -140,20 +191,23 @@ function processPayroll() {
                                         }
 
                                         if (payrollResult.length === 0) {
+                                            const finalSalary = isManagerial ? grossPay : totalSalary + totalOvertimePay;
                                             db.query(
                                                 `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end, absent) 
                                                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                                                [payroll_id, employee_id, totalHours, salary, startDate, endDate, absences],
+                                                [payroll_id, employee_id, totalHours, finalSalary, startDate, endDate, absences],
                                                 (err) => {
                                                     if (err) {
                                                         console.error("Payroll insertion error:", err);
                                                     } else {
                                                         console.log(`Payroll processed for employee_id ${employee_id}`);
 
-                                                        const message = `Hello, ${name}. Your salary for the period from ${startDate} to ${endDate} has been processed. PHP${salary} for ${totalHours} hours worked. Absences: ${absences}.`;
+                                                        const message = `Hello, ${name}. Your salary for the period from ${startDate} to ${endDate} has been processed. PHP${finalSalary.toFixed(2)} for ${totalHours} hours worked, including PHP${totalOvertimePay.toFixed(2)} for overtime. Absences: ${absences}.`;
                                                         sendNotifications(employee_id, phone_number, email, message, notification_id);
 
-                                                        db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id]);
+                                                        if (!isManagerial) {
+                                                            db.query(`UPDATE employees SET monthSalary = 0 WHERE employee_id = ?`, [employee_id]);
+                                                        }
                                                     }
                                                 }
                                             );
@@ -170,6 +224,8 @@ function processPayroll() {
         }
     );
 }
+
+
 
 function sendNotifications(employee_id, phone_number, email, message, notification_id) {
     const to = "63" + phone_number;
