@@ -1042,9 +1042,26 @@ router.get('/payroll', (req, res) => {
                     console.error(err);
                     res.status(500).json({ status: 'error' });
                 } else {
+                    // Process dataResult to merge duplicate employee_id entries
+                    const mergedResult = dataResult.reduce((acc, curr) => {
+                        const { employee_id, total_pay, period_start, period_end, absent , hours_worked } = curr;
+                        if (!acc[employee_id]) {
+                            acc[employee_id] = { ...curr };
+                        } else {
+                            acc[employee_id].total_pay += total_pay;
+                            acc[employee_id].absent += absent;
+                            acc[employee_id].hours_worked += hours_worked;
+                            acc[employee_id].period_start = moment.min(moment(acc[employee_id].period_start), moment(period_start)).format('YYYY-MM-DD');
+                            acc[employee_id].period_end = moment.max(moment(acc[employee_id].period_end), moment(period_end)).format('YYYY-MM-DD');
+                        }
+                        return acc;
+                    }, {});
+
+                    const finalResult = Object.values(mergedResult);
+
                     res.status(200).json({
                         status: 'ok',
-                        data: dataResult,
+                        data: finalResult,
                         currentPage: parseInt(page),
                         totalPages: totalPages,
                         isLastPage: parseInt(page) === totalPages,
@@ -1070,13 +1087,14 @@ router.get('/export-payroll', (req, res) => {
     const dataQuery = `
     SELECT 
         payroll.id,
+        payroll.employee_id,
         payroll.hours_worked,
         payroll.total_pay,
         payroll.created_at,
         payroll.period_start,
         payroll.period_end,
-        employees.name,
-        employees.avatar
+        payroll.absent,
+        employees.name
     ${baseQuery}
     ORDER BY payroll.created_at ASC`;
 
@@ -1090,9 +1108,26 @@ router.get('/export-payroll', (req, res) => {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
+            // Process dataResult to merge duplicate employee_id entries
+            const mergedResult = dataResult.reduce((acc, curr) => {
+                const { employee_id, total_pay, period_start, period_end, hours_worked, absent } = curr;
+                if (!acc[employee_id]) {
+                    acc[employee_id] = { ...curr };
+                } else {
+                    acc[employee_id].total_pay += total_pay;
+                    acc[employee_id].absent += absent;
+                    acc[employee_id].hours_worked += hours_worked;
+                    acc[employee_id].period_start = moment.min(moment(acc[employee_id].period_start), moment(period_start)).format('YYYY-MM-DD');
+                    acc[employee_id].period_end = moment.max(moment(acc[employee_id].period_end), moment(period_end)).format('YYYY-MM-DD');
+                }
+                return acc;
+            }, {});
+
+            const finalResult = Object.values(mergedResult);
+
             res.status(200).json({
                 status: 'ok',
-                data: dataResult,
+                data: finalResult,
             });
         }
     });
