@@ -1094,7 +1094,8 @@ router.get('/export-payroll', (req, res) => {
         payroll.period_start,
         payroll.period_end,
         payroll.absent,
-        employees.name
+        employees.name,
+        employees.hierarchy
     ${baseQuery}
     ORDER BY payroll.created_at ASC`;
 
