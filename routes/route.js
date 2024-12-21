@@ -1928,7 +1928,7 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
         }
         query = 'UPDATE leaveRequest SET status = ?, received_by = ?, date_of_received = ?, recorded_by = ? WHERE id = ?';
         values = [status, received_by, new Date(), recorded_by, id];
-    } else if (status === 'Process') {
+    } else if (status === 'Processing') {
         query = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
         values = [status, id];
     }
