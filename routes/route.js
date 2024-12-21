@@ -1900,12 +1900,11 @@ router.get('/leave_request', (req, res) => {
 router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
     const { id } = req.params;
     const { status, approved_by, received_by, recorded_by, department_head, hr_department, withpay } = req.body;
-    console.log('Server-side:', id, req.body);
 
     // Ensure LeaveRequestStatus is defined and contains the expected values
     const LeaveRequestStatus = {
         PENDING: 'Pending',
-        PROCESS: 'Process',
+        PROCESS: 'Processing',
         APPROVED: 'Approved',
         REJECTED: 'Rejected'
     };
