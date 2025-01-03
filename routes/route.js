@@ -152,9 +152,9 @@ router.get('/search_employee', async (req, res) => {
     const queryParams = [];
 
     // Search across multiple fields
-    query += ' AND (employee_id LIKE ? OR name LIKE ? OR email LIKE ? OR department LIKE ? OR position LIKE ? OR phone_number LIKE ? OR hierarchy LIKE ? )';
+    query += ' AND (employee_id LIKE ? OR name LIKE ? OR email LIKE ? OR department LIKE ? OR position LIKE ? OR phone_number LIKE ? OR hierarchy LIKE ?)';
     const searchPattern = `%${q}%`;
-    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
+    queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
