@@ -145,6 +145,8 @@ router.post('/login', (req, res) => {
 });
 
 
+
+
 router.post('/admin/register', [
     check('name')
         .notEmpty().withMessage('Name is required')
@@ -217,23 +219,33 @@ router.post('/admin/login', async (req, res) => {
 
                     // Proceed with password validation and response
                     const user = results[0];
-                    const { password: userPassword, ...userWithoutPassword } = user;
+                    const { password: userPassword, employee_id, ...userWithoutPassword } = user;
                     const isMatch = await comparePassword(password, userPassword);
 
                     if (!isMatch) {
                         return res.status(400).json({ message: 'Invalid email or password' });
                     }
 
-                    // Generate token and set cookie
-                    const token = generateToken(userWithoutPassword);
-                    res.cookie('token', token, {
-                        httpOnly: true,
-                        secure: process.env.NODE_ENV === 'production',
-                        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
-                        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-                    });
+                    // Fetch the avatar from the employee table
+                    db.query('SELECT avatar FROM employees WHERE employee_id = ?', [employee_id], (err, employeeResults) => {
+                        if (err) {
+                            console.error(err);
+                            return res.status(500).json({ message: 'Database query error' });
+                        }
 
-                    return res.json({ token, user: userWithoutPassword, userType });
+                        const avatar = employeeResults.length > 0 ? employeeResults[0].avatar : null;
+
+                        // Generate token and set cookie
+                        const token = generateToken(userWithoutPassword);
+                        res.cookie('token', token, {
+                            httpOnly: true,
+                            secure: process.env.NODE_ENV === 'production',
+                            maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+                            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                        });
+
+                        return res.json({ token, user: { ...userWithoutPassword, avatar }, userType });
+                    });
                 });
             } else {
                 // Admin found, validate password and return token
