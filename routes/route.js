@@ -1013,7 +1013,7 @@ router.get('/payroll', (req, res) => {
     INNER JOIN employees ON payroll.employee_id = employees.employee_id
     WHERE
         1=1
-        ${startDate && endDate ? 'AND DATE(payroll.created_at) BETWEEN ? AND ?' : ''}`;
+        ${startDate && endDate ? 'AND DATE(payroll.period_start) BETWEEN ? AND ?' : ''}`;
 
     const dataQuery = `
     SELECT payroll.*, employees.name, employees.hierarchy
