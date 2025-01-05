@@ -1559,7 +1559,8 @@ router.get('/user-attendance/:id', (req, res) => {
                             const missingDate = previousDate.clone().add(i, 'days');
                             const missingLeaveData = getLeaveDataForDate(missingDate.format('YYYY-MM-DD'));
                             const isSunday = missingDate.day() === 0; // 0 represents Sunday
-                            console.log(missingDate.day(), today)
+                            console.log(isSunday ? 'Sunday' : 'Not Sunday', missingDate.format('YYYY-MM-DD'));
+                            console.log(missingDate);
                     
                             attendanceData.push({
                                 employee_id: record.employee_id,
