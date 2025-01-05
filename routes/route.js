@@ -874,9 +874,27 @@ router.get('/early_departures', (req, res) => {
 router.get('/absent_employees', (req, res) => {
     const query = `
         SELECT 
-            (SELECT COUNT(*) FROM employees LEFT JOIN attendance ON employees.employee_id = attendance.employee_id AND DATE(attendance.date) = CURDATE() WHERE attendance.employee_id IS NULL AND employees.day_off = false) as count_today,
-            (SELECT COUNT(*) FROM employees LEFT JOIN attendance ON employees.employee_id = attendance.employee_id AND DATE(attendance.date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) WHERE attendance.employee_id IS NULL AND employees.day_off = false) as count_yesterday,
-            (SELECT GROUP_CONCAT(employees.name SEPARATOR ', ') FROM employees LEFT JOIN attendance ON employees.employee_id = attendance.employee_id AND DATE(attendance.date) = CURDATE() WHERE attendance.employee_id IS NULL AND employees.day_off = false) as absent_today
+            (SELECT COUNT(*) 
+             FROM employees 
+             LEFT JOIN attendance ON employees.employee_id = attendance.employee_id 
+             AND DATE(attendance.date) = CURDATE() 
+             WHERE attendance.employee_id IS NULL 
+             AND employees.day_off = false 
+             AND DAYOFWEEK(CURDATE()) != 1) as count_today,
+            (SELECT COUNT(*) 
+             FROM employees 
+             LEFT JOIN attendance ON employees.employee_id = attendance.employee_id 
+             AND DATE(attendance.date) = DATE_SUB(CURDATE(), INTERVAL 1 DAY) 
+             WHERE attendance.employee_id IS NULL 
+             AND employees.day_off = false 
+             AND DAYOFWEEK(DATE_SUB(CURDATE(), INTERVAL 1 DAY)) != 1) as count_yesterday,
+            (SELECT GROUP_CONCAT(employees.name SEPARATOR ', ') 
+             FROM employees 
+             LEFT JOIN attendance ON employees.employee_id = attendance.employee_id 
+             AND DATE(attendance.date) = CURDATE() 
+             WHERE attendance.employee_id IS NULL 
+             AND employees.day_off = false 
+             AND DAYOFWEEK(CURDATE()) != 1) as absent_today
     `;
 
     db.query(query, (err, result) => {
@@ -1985,7 +2003,7 @@ router.delete('/leave_request/:id', (req, res) => {
             console.error(err);
             return res.status(500).json({ status: 'error', message: 'Database error' });
         }
-        
+
         if (req.io) {
             req.io.emit('leaveRequestUpdate', { message: 'Employee data updated' });
         } else {
