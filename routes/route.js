@@ -535,6 +535,16 @@ router.get('/employee/:email', (req, res) => {
             if (result.length > 0) {
                 delete result[0].password;
             }
+
+            const today = moment().tz('Asia/Manila');
+            const isSunday = today.day() === 0; // 0 represents Sunday
+
+            if (isSunday) {
+                result.forEach(employee => {
+                    employee.day_off = true;
+                });
+            }
+
             res.status(200).json({ status: 'ok', data: result });
         }
     });
@@ -550,6 +560,16 @@ router.get('/employees/:employee', (req, res) => {
             if (result.length > 0) {
                 delete result[0].password;
             }
+
+            const today = moment().tz('Asia/Manila');
+            const isSunday = today.day() === 0; // 0 represents Sunday
+
+            if (isSunday) {
+                result.forEach(employee => {
+                    employee.day_off = true;
+                });
+            }
+
             res.status(200).json({ status: 'ok', data: result });
         } else {
             res.status(404).json({ status: 'not found' });
@@ -568,6 +588,16 @@ router.get('/employees/:id', (req, res) => {
             if (result.length > 0) {
                 delete result[0].password;
             }
+
+            const today = moment().tz('Asia/Manila');
+            const isSunday = today.day() === 0; // 0 represents Sunday
+
+            if (isSunday) {
+                result.forEach(employee => {
+                    employee.day_off = true;
+                });
+            }
+            
             res.status(200).json({ status: 'ok', data: result });
         }
     });
