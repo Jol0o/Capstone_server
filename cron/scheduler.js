@@ -110,7 +110,7 @@ function processPayrollForPeriod(startDate, endDate) {
             }
 
             employees.forEach((employee) => {
-                                const { employee_id, phone_number, name, basicSalary, hierarchy, email, totalSalary: grossPay } = employee;
+                const { employee_id, phone_number, name, basicSalary, hierarchy, email, totalSalary: grossPay } = employee;
                 const isManagerial = hierarchy === "Managerial" || hierarchy === "Supervisor";
 
                 let totalHours = 0;
@@ -182,15 +182,15 @@ function processPayrollForPeriod(startDate, endDate) {
                                 ).length;
 
                                 db.query(
-                                    `SELECT * FROM payroll WHERE employee_id = ? AND DATE(created_at) = CURDATE()`,
-                                    [employee_id],
+                                    `SELECT * FROM payroll WHERE employee_id = ? AND period_start = ? AND period_end = ?`,
+                                    [employee_id, startDate, endDate],
                                     (err, payrollResult) => {
                                         if (err) {
                                             console.error("Payroll query error:", err);
                                             return;
                                         }
 
-                                        // if (payrollResult.length === 0) {
+                                        if (payrollResult.length === 0) {
                                             const finalSalary = isManagerial ? grossPay : totalSalary + totalOvertimePay;
                                             db.query(
                                                 `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end, absent) 
@@ -211,9 +211,9 @@ function processPayrollForPeriod(startDate, endDate) {
                                                     }
                                                 }
                                             );
-                                        // } else {
-                                        //     console.log(`Payroll already processed for employee_id ${employee_id} today.`);
-                                        // }
+                                        } else {
+                                            throw new Error(`Payroll already processed for employee_id ${employee_id} for the period from ${startDate} to ${endDate}.`);
+                                        }
                                     }
                                 );
                             }
