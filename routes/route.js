@@ -1044,7 +1044,7 @@ router.get('/payroll', (req, res) => {
                 } else {
                     // Process dataResult to merge duplicate employee_id entries
                     const mergedResult = dataResult.reduce((acc, curr) => {
-                        const { employee_id, total_pay, period_start, period_end, absent , hours_worked } = curr;
+                        const { employee_id, total_pay, period_start, period_end, absent, hours_worked } = curr;
                         if (!acc[employee_id]) {
                             acc[employee_id] = { ...curr };
                         } else {
@@ -1146,7 +1146,7 @@ router.get('/payroll/:id', (req, res) => {
         FROM payroll 
         INNER JOIN employees ON payroll.employee_id = employees.employee_id
         WHERE payroll.employee_id = ?
-        ORDER BY payroll.period_start DESC
+         ORDER BY payroll.created_at DESC;
         LIMIT ? OFFSET ?
     `;
 
@@ -1996,7 +1996,7 @@ router.delete('/leave_request/:id', (req, res) => {
             console.error(err);
             return res.status(500).json({ status: 'error', message: 'Database error' });
         }
-        
+
         if (req.io) {
             req.io.emit('leaveRequestUpdate', { message: 'Employee data updated' });
         } else {
