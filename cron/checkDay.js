@@ -7,7 +7,7 @@ cron.schedule('*/5 * * * *', () => {
     const isSunday = date.day() === 0; // 0 represents Sunday
 
     if (isSunday) {
-        db.query("UPDATE employees SET status = 'off duty'", (err, result) => {
+        db.query("UPDATE employees SET day_off = 'off duty'", (err, result) => {
             if (err) {
                 console.error("Error updating employee status:", err);
                 throw err;
