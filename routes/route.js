@@ -1552,22 +1552,19 @@ router.get('/user-attendance/:id', (req, res) => {
                         status = timeIn.isSameOrBefore(eightAM) ? 'present' : 'late';
                     }
 
-                    // Set status to "off duty" if the day is Sunday
-                    if (record.day === 'Sunday') {
-                        status = 'off duty';
-                    }
-
                     // Check for gaps in dates and add "absent" status for missing dates
                     if (previousDate) {
                         const diffDays = currentDate.diff(previousDate, 'days');
                         for (let i = 1; i < diffDays; i++) {
                             const missingDate = previousDate.clone().add(i, 'days');
                             const missingLeaveData = getLeaveDataForDate(missingDate.format('YYYY-MM-DD'));
+                            const isSunday = missingDate.day() === 0; // 0 represents Sunday
+                    
                             attendanceData.push({
                                 employee_id: record.employee_id,
                                 date: missingDate.format('YYYY-MM-DD'),
                                 day: missingDate.format('dddd'),
-                                status: missingLeaveData ? 'off duty' : 'absent',
+                                status: isSunday ? 'off duty' : (missingLeaveData ? 'off duty' : 'absent'),
                                 inclusive_dates: missingLeaveData ? missingLeaveData.inclusive_dates : null,
                                 to_date: missingLeaveData ? missingLeaveData.to_date : null,
                                 leave_status: missingLeaveData ? missingLeaveData.status : null
