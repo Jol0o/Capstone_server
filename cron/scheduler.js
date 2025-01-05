@@ -190,7 +190,7 @@ function processPayrollForPeriod(startDate, endDate) {
                                             return;
                                         }
 
-                                        if (payrollResult.length === 0) {
+                                        // if (payrollResult.length === 0) {
                                             const finalSalary = isManagerial ? grossPay : totalSalary + totalOvertimePay;
                                             db.query(
                                                 `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end, absent) 
@@ -211,9 +211,9 @@ function processPayrollForPeriod(startDate, endDate) {
                                                     }
                                                 }
                                             );
-                                        } else {
-                                            console.log(`Payroll already processed for employee_id ${employee_id} today.`);
-                                        }
+                                        // } else {
+                                        //     console.log(`Payroll already processed for employee_id ${employee_id} today.`);
+                                        // }
                                     }
                                 );
                             }
