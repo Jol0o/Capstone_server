@@ -502,6 +502,15 @@ router.get('/employees', (req, res) => {
                     console.error(err);
                     res.status(500).json({ status: 'error' });
                 } else {
+                    const today = moment().tz('Asia/Manila');
+                    const isSunday = today.day() === 0; // 0 represents Sunday
+
+                    if (isSunday) {
+                        dataResult.forEach(employee => {
+                            employee.day_off = true;
+                        });
+                    }
+
                     res.status(200).json({
                         status: 'ok',
                         data: dataResult,
@@ -509,7 +518,6 @@ router.get('/employees', (req, res) => {
                         totalPages: totalPages,
                         isLastPage: page === totalPages
                     });
-
                 }
             });
         }
@@ -2322,7 +2330,7 @@ router.get('/export/:table', (req, res) => {
 
     if (!table) return res.status(400).json({ message: 'Table name is required' });
 
-    const q = `SELECT * FROM ?? `;
+    const q = `SELECT * FROM ??`;
 
     db.query(q, [table], (err, result) => {
         if (err) {
@@ -2332,9 +2340,15 @@ router.get('/export/:table', (req, res) => {
                 return res.status(404).json({ message: 'No data found' });
             }
 
-            const fields = Object.keys(result[0]);
+            // Exclude the employee_id field from the result
+            const filteredResult = result.map(row => {
+                const { employee_id, ...rest } = row;
+                return rest;
+            });
+
+            const fields = Object.keys(filteredResult[0]);
             const json2csvParser = new Parser({ fields });
-            const csv = json2csvParser.parse(result);
+            const csv = json2csvParser.parse(filteredResult);
 
             res.header('Content-Type', 'text/csv');
             res.attachment(`${table}.csv`);
