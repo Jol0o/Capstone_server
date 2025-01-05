@@ -1559,8 +1559,6 @@ router.get('/user-attendance/:id', (req, res) => {
                             const missingDate = previousDate.clone().add(i, 'days');
                             const missingLeaveData = getLeaveDataForDate(missingDate.format('YYYY-MM-DD'));
                             const isSunday = missingDate.day() === 0; // 0 represents Sunday
-                            console.log(isSunday ? 'Sunday' : 'Not Sunday', missingDate.format('YYYY-MM-DD'));
-                            console.log(missingDate);
                     
                             attendanceData.push({
                                 employee_id: record.employee_id,
@@ -1595,11 +1593,13 @@ router.get('/user-attendance/:id', (req, res) => {
                     let nextDate = previousDate.clone().add(1, 'days');
                     while (nextDate.isBefore(today) || nextDate.isSame(today, 'day')) {
                         const nextLeaveData = getLeaveDataForDate(nextDate.format('YYYY-MM-DD'));
+                        const isSunday = nextDate.day() === 0; // 0 represents Sunday
+
                         attendanceData.push({
                             employee_id: id,
                             date: nextDate.format('YYYY-MM-DD'),
                             day: nextDate.format('dddd'),
-                            status: nextLeaveData ? 'off duty' : 'absent',
+                            status: isSunday ? 'off duty' : (nextLeaveData ? 'off duty' : 'absent'),
                             inclusive_dates: nextLeaveData ? nextLeaveData.inclusive_dates : null,
                             to_date: nextLeaveData ? nextLeaveData.to_date : null,
                             leave_status: nextLeaveData ? nextLeaveData.status : null
