@@ -1072,9 +1072,15 @@ router.get('/payroll', (req, res) => {
         ${startDate && endDate ? 'AND DATE(payroll.period_start) BETWEEN ? AND ?' : ''}`;
 
     const dataQuery = `
-    SELECT payroll.*, employees.name, employees.hierarchy
+    SELECT payroll.*, employees.name, employees.hierarchy, employees.department
     ${baseQuery}
     ORDER BY payroll.created_at ASC`;
+
+    const attendanceQuery = `
+    SELECT employee_id, COUNT(*) as days_present
+    FROM attendance
+    ${startDate && endDate ? 'AND DATE(date) BETWEEN ? AND ?' : ''}
+    GROUP BY employee_id`;
 
     const queryParams = [];
     if (startDate && endDate) {
@@ -1086,33 +1092,47 @@ router.get('/payroll', (req, res) => {
             console.error(err);
             res.status(500).json({ status: 'error' });
         } else {
-            // Process dataResult to merge duplicate employee_id entries
-            const mergedResult = dataResult.reduce((acc, curr) => {
-                const { employee_id, total_pay, period_start, period_end, absent, hours_worked } = curr;
-                if (!acc[employee_id]) {
-                    acc[employee_id] = { ...curr };
+            db.query(attendanceQuery, queryParams, (err, attendanceResult) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ status: 'error' });
                 } else {
-                    acc[employee_id].total_pay += total_pay;
-                    acc[employee_id].absent += absent;
-                    acc[employee_id].hours_worked += hours_worked;
-                    acc[employee_id].period_start = moment.min(moment(acc[employee_id].period_start), moment(period_start)).format('YYYY-MM-DD');
-                    acc[employee_id].period_end = moment.max(moment(acc[employee_id].period_end), moment(period_end)).format('YYYY-MM-DD');
+                    // Process dataResult to merge duplicate employee_id entries
+                    const mergedResult = dataResult.reduce((acc, curr) => {
+                        const { employee_id, total_pay, period_start, period_end, absent, hours_worked } = curr;
+                        if (!acc[employee_id]) {
+                            acc[employee_id] = { ...curr };
+                        } else {
+                            acc[employee_id].total_pay += total_pay;
+                            acc[employee_id].absent += absent;
+                            acc[employee_id].hours_worked += hours_worked;
+                            acc[employee_id].period_start = moment.min(moment(acc[employee_id].period_start), moment(period_start)).format('YYYY-MM-DD');
+                            acc[employee_id].period_end = moment.max(moment(acc[employee_id].period_end), moment(period_end)).format('YYYY-MM-DD');
+                        }
+                        return acc;
+                    }, {});
+
+                    // Add days_present to the merged result
+                    attendanceResult.forEach(record => {
+                        if (mergedResult[record.employee_id]) {
+                            mergedResult[record.employee_id].days_present = record.days_present;
+                        }
+                    });
+
+                    const finalResult = Object.values(mergedResult);
+
+                    // Apply pagination to the merged result
+                    const paginatedResult = finalResult.slice(offset, offset + parseInt(limit));
+
+                    res.status(200).json({
+                        status: 'ok',
+                        data: paginatedResult,
+                        currentPage: parseInt(page),
+                        totalPages: Math.ceil(finalResult.length / limit),
+                        isLastPage: parseInt(page) === Math.ceil(finalResult.length / limit),
+                        total: finalResult.length
+                    });
                 }
-                return acc;
-            }, {});
-
-            const finalResult = Object.values(mergedResult);
-
-            // Apply pagination to the merged result
-            const paginatedResult = finalResult.slice(offset, offset + parseInt(limit));
-
-            res.status(200).json({
-                status: 'ok',
-                data: paginatedResult,
-                currentPage: parseInt(page),
-                totalPages: Math.ceil(finalResult.length / limit),
-                isLastPage: parseInt(page) === Math.ceil(finalResult.length / limit),
-                total: finalResult.length
             });
         }
     });
