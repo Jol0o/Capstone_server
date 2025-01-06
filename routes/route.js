@@ -1768,12 +1768,11 @@ router.post('/leave_request', [
         position,
         requestedBy,
         toDate,
-        supportingDocumentUrl
+        supportingDocumentUrl,
+        employee_id
     } = req.body;
-    const { employee_id } = req.user;
-    console.log(req.user)
 
-    if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    if (!employee_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
 
     // Check for existing leave requests
     db.query('SELECT * FROM leaveRequest WHERE employee_id = ? AND status NOT IN (?, ?)', [employee_id, 'Rejected', 'Done'], (err, existingRequests) => {
