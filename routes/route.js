@@ -2051,11 +2051,11 @@ router.delete('/leave_request/:id', (req, res) => {
 })
 
 router.get('/user_request', (req, res) => {
-    const { employee_id } = req.user
-    if (!employee_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+    const { id } = req.params;
+    if (!id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
 
     const q = 'SELECT * FROM leaveRequest WHERE employee_id = ?';
-    db.query(q, [employee_id], (err, result) => {
+    db.query(q, [id], (err, result) => {
         if (err) {
             console.error(err);
             res.status(500).json({ status: 'error', message: 'Database error' });
