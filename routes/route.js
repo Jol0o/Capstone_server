@@ -1076,11 +1076,12 @@ router.get('/payroll', (req, res) => {
     ${baseQuery}
     ORDER BY payroll.created_at ASC`;
 
-    const attendanceQuery = `
-    SELECT employee_id, COUNT(*) as days_present
-    FROM attendance
-    ${startDate && endDate ? 'AND DATE(date) BETWEEN ? AND ?' : ''}
-    GROUP BY employee_id`;
+       const attendanceQuery = `
+        SELECT employee_id, COUNT(*) as days_present
+        FROM attendance
+        ${startDate && endDate ? 'WHERE DATE(date) BETWEEN ? AND ?' : ''}
+        GROUP BY employee_id
+    `;
 
     const queryParams = [];
     if (startDate && endDate) {
