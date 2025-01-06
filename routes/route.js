@@ -1787,7 +1787,7 @@ router.post('/leave_request', [
         }
 
         // Fetch leaveCredits from employees table
-        db.query('SELECT leaveCredits FROM employees WHERE employee_id = ?', [employee_id], (err, result) => {
+        db.query('SELECT * FROM employees WHERE employee_id = ?', [employee_id], (err, result) => {
             if (err) {
                 console.error(err);
                 return res.status(500).json({ status: 'error', message: 'Database error' });
@@ -2409,81 +2409,128 @@ router.post('/run-payroll', async (req, res) => {
     }
 });
 
-router.get('/user-dashboard', authMiddleware, async (req, res) => {
-    const { employee_id } = req.user;
+router.get('/employee-summary/:id', async (req, res) => {
+    const { id } = req.params;
 
-    // SQL Queries
+    if (!id) return res.status(400).json({ message: 'Employee ID is required' });
+
     const queries = {
         leaveCredits: 'SELECT leaveCredits FROM employees WHERE employee_id = ?',
         usedLeaveDays: `
             SELECT SUM(days_requested) AS used_leave_days 
             FROM leaveRequest 
             WHERE employee_id = ?
-        AND status IN("Approved", "Done") 
+            AND status IN("Approved", "Done") 
             AND YEAR(created_at) = YEAR(CURRENT_DATE)
         `,
         pendingLeaveRequests: `
             SELECT COUNT(*) AS pending_leave_requests 
             FROM leaveRequest 
             WHERE employee_id = ?
-        AND status IN("Pending", "Process")
-            `,
+            AND status IN("Pending", "Process")
+        `,
         latestPayroll: `
-    SELECT *
-        FROM payroll 
+            SELECT *
+            FROM payroll 
             WHERE employee_id = ?
-        ORDER BY created_at DESC 
+            ORDER BY created_at DESC 
             LIMIT 1
         `,
         totalDays: `
             SELECT COUNT(*) AS total_days 
             FROM attendance 
             WHERE employee_id = ?
-        AND MONTH(date) = MONTH(CURRENT_DATE) 
+            AND MONTH(date) = MONTH(CURRENT_DATE) 
             AND YEAR(date) = YEAR(CURRENT_DATE)
         `,
         allPayroll: 'SELECT * FROM payroll WHERE employee_id = ?'
     };
 
     try {
-        // Run all queries in parallel
-        const [
-            leaveCreditsResult,
-            usedLeaveDaysResult,
-            pendingLeaveRequestsResult,
-            latestPayrollResult,
-            totalDaysResult,
-            totalPayrollResult,
-        ] = await Promise.all([
-            query(queries.leaveCredits, [employee_id]),
-            query(queries.usedLeaveDays, [employee_id]),
-            query(queries.pendingLeaveRequests, [employee_id]),
-            query(queries.latestPayroll, [employee_id]),
-            query(queries.totalDays, [employee_id]),
-            query(queries.allPayroll, [employee_id])
-        ]);
+        const leaveCredits = await new Promise((resolve, reject) => {
+            db.query(queries.leaveCredits, [id], (err, result) => {
+                if (err) {
+                    console.error('Error fetching leave credits:', err);
+                    return reject(err);
+                }
+                if (result.length === 0) {
+                    console.log('No leave credits found for employee_id:', id);
+                    return resolve(null); // Handle case where no results are returned
+                }
+                console.log('Leave credits result:', result);
+                resolve(result[0].leaveCredits);
+            });
+        });
 
-        // Extract results
-        const leaveCredits = leaveCreditsResult[0]?.leaveCredits || 0;
-        const usedLeaveDays = usedLeaveDaysResult[0]?.used_leave_days || 0;
-        const pendingLeaveRequests = pendingLeaveRequestsResult[0]?.pending_leave_requests || 0;
-        const latestPayroll = latestPayrollResult[0] || null;
-        const totalDays = totalDaysResult[0]?.total_days || 0;
-        const totalPayroll = totalPayrollResult || null;
+        const usedLeaveDays = await new Promise((resolve, reject) => {
+            db.query(queries.usedLeaveDays, [id], (err, result) => {
+                if (err) {
+                    console.error('Error fetching used leave days:', err);
+                    return reject(err);
+                }
+                resolve(result[0].used_leave_days || 0);
+            });
+        });
 
-        // Send response
+        const pendingLeaveRequests = await new Promise((resolve, reject) => {
+            db.query(queries.pendingLeaveRequests, [id], (err, result) => {
+                if (err) {
+                    console.error('Error fetching pending leave requests:', err);
+                    return reject(err);
+                }
+                resolve(result[0].pending_leave_requests);
+            });
+        });
+
+        const latestPayroll = await new Promise((resolve, reject) => {
+            db.query(queries.latestPayroll, [id], (err, result) => {
+                if (err) {
+                    console.error('Error fetching latest payroll:', err);
+                    return reject(err);
+                }
+                if (result.length === 0) {
+                    console.log('No payroll found for employee_id:', id);
+                    return resolve(null); // Handle case where no results are returned
+                }
+                console.log('Latest payroll result:', result);
+                resolve(result[0]);
+            });
+        });
+
+        const totalDays = await new Promise((resolve, reject) => {
+            db.query(queries.totalDays, [id], (err, result) => {
+                if (err) {
+                    console.error('Error fetching total days:', err);
+                    return reject(err);
+                }
+                resolve(result[0].total_days);
+            });
+        });
+
+        const allPayroll = await new Promise((resolve, reject) => {
+            db.query(queries.allPayroll, [id], (err, result) => {
+                if (err) {
+                    console.error('Error fetching all payroll:', err);
+                    return reject(err);
+                }
+                resolve(result);
+            });
+        });
+
         res.status(200).json({
             status: 'ok',
-            leaveCredits,
-            usedLeaveDays,
-            pendingLeaveRequests,
-            latestPayroll,
-            totalDays,
-            totalPayroll
+            data: {
+                leaveCredits,
+                usedLeaveDays,
+                pendingLeaveRequests,
+                latestPayroll,
+                totalDays,
+                allPayroll
+            }
         });
     } catch (err) {
-        console.error('Error executing queries:', err);
-        res.status(500).json({ status: 'error', message: 'Database error' });
+        console.error(err);
+        res.status(500).json({ status: 'error', message: 'Database error', error: err });
     }
 });
 
