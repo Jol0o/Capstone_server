@@ -1191,7 +1191,7 @@ router.get('/payroll/:id', (req, res) => {
         FROM payroll 
         INNER JOIN employees ON payroll.employee_id = employees.employee_id
         WHERE payroll.employee_id = ?
-         ORDER BY payroll.created_at DESC;
+        ORDER BY payroll.created_at DESC
         LIMIT ? OFFSET ?
     `;
 
@@ -1221,7 +1221,6 @@ router.get('/payroll/:id', (req, res) => {
         }
     });
 });
-
 
 router.delete('/payroll/:id', (req, res) => {
     const { id } = req.params;
@@ -2050,7 +2049,7 @@ router.delete('/leave_request/:id', (req, res) => {
     });
 })
 
-router.get('/user_request', (req, res) => {
+router.get('/user_request/:id', (req, res) => {
     const { id } = req.params;
     if (!id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
 
