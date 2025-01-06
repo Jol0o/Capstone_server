@@ -1771,7 +1771,7 @@ router.post('/leave_request', [
         supportingDocumentUrl
     } = req.body;
     const { employee_id } = req.user;
-    console.log(employee_id)
+    console.log(req.user)
 
     if (!req.user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
 
