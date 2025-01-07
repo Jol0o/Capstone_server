@@ -1208,7 +1208,7 @@ router.get('/payroll/:id', (req, res) => {
 
     const countQuery = 'SELECT COUNT(*) as total FROM payroll WHERE employee_id = ?';
     const dataQuery = `
-        SELECT payroll.*, employees.name, employees.avatar
+        SELECT payroll.*, employees.name, employees.hierarchy, employees.department
         FROM payroll 
         INNER JOIN employees ON payroll.employee_id = employees.employee_id
         WHERE payroll.employee_id = ?
@@ -1229,13 +1229,55 @@ router.get('/payroll/:id', (req, res) => {
                     console.error(err);
                     res.status(500).json({ status: 'error' });
                 } else {
-                    res.status(200).json({
-                        status: 'ok',
-                        data: dataResult,
-                        currentPage: page,
-                        totalPages: totalPages,
-                        isLastPage: page === totalPages,
-                        total
+                    if (dataResult.length === 0) {
+                        return res.status(200).json({
+                            status: 'ok',
+                            data: [],
+                            currentPage: page,
+                            totalPages: totalPages,
+                            isLastPage: page === totalPages,
+                            total
+                        });
+                    }
+
+                    const periodStart = dataResult[0].period_start;
+                    const periodEnd = dataResult[0].period_end;
+
+                    const attendanceQuery = `
+                        SELECT employee_id, COUNT(*) as days_present
+                        FROM attendance
+                        WHERE employee_id = ?
+                        AND DATE(date) BETWEEN ? AND ?
+                        GROUP BY employee_id
+                    `;
+
+                    db.query(attendanceQuery, [id, periodStart, periodEnd], (err, attendanceResult) => {
+                        if (err) {
+                            console.error(err);
+                            res.status(500).json({ status: 'error' });
+                        } else {
+                            // Merge attendance data with payroll data
+                            const attendanceMap = attendanceResult.reduce((acc, curr) => {
+                                acc[curr.employee_id] = curr.days_present;
+                                return acc;
+                            }, {});
+
+                            const mergedResult = dataResult.map(record => {
+                                return {
+                                    ...record,
+                                    days_present: attendanceMap[record.employee_id] || 0
+                                };
+                            });
+
+                            res.status(200).json({
+                                status: 'ok',
+                                data: mergedResult,
+                                currentPage: page,
+                                totalPages: totalPages,
+                                isLastPage: page === totalPages,
+                                total
+                            });
+                        }
                     });
                 }
             });
