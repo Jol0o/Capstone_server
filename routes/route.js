@@ -37,6 +37,23 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+const sendMails = (to, subject, text) => {
+    const mailOptions = {
+        from: process.env.EMAIL,
+        to,
+        subject,
+        text
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+            console.error('Error sending email:', error);
+        } else {
+            console.log('Email sent:', info.response);
+        }
+    });
+};
+
 const loadEmailTemplate = async (templateName, values) => {
     const templatePath = path.join(__dirname, '..', 'email_template', `${templateName}.ejs`);
     let template = await ejs.renderFile(templatePath);
@@ -700,6 +717,12 @@ router.put('/employees/:id', [
                 where: { user_id: existingEmployee.employee_id },
                 data: { email }
             });
+        }
+
+        if (day_off) {
+            const subject = 'Day Off Notification';
+            const text = `Dear ${name},\n\nYou are off on ${new Date().toLocaleDateString()}. Enjoy your day off!\n\nBest regards,\nYour Company`;
+            sendMails(email, subject, text);
         }
 
         res.status(200).json({ status: 'ok', data: updatedEmployee });

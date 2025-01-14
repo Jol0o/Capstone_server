@@ -32,12 +32,16 @@ router.post(
             .matches(/[a-zA-Z]/)
             .withMessage('Password must contain a letter')
             .matches(/[A-Z]/)
-            .withMessage('Password must contain an uppercase letter'),
+            .withMessage('Password must contain an uppercase letter')
+            .matches(/[!@#$%^&*(),.?":{}|<>]/)
+            .withMessage('Password must contain a special character'),
         body('name')
             .notEmpty()
             .withMessage('Name is required')
             .trim()
-            .escape(),
+            .escape()
+            .matches(/^[a-zA-Z\s]+$/)
+            .withMessage('Name must not contain special characters'),
         body('phone_number')
             .matches(/^[0-9]{11}$/)
             .withMessage('Phone number must be exactly 11 digits and must not contain special characters'),
