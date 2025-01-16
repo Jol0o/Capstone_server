@@ -192,6 +192,20 @@ function processPayrollForPeriod(startDate, endDate) {
 
                                         if (payrollResult.length === 0) {
                                             const finalSalary = isManagerial ? grossPay : totalSalary + totalOvertimePay;
+
+                                            const sssDeduction = finalSalary * 0.095;
+                                            const philHealthDeduction = finalSalary * 0.025;
+                                            const pagIbigDeduction = finalSalary * 0.01;
+                                            const totalDeductions = sssDeduction + philHealthDeduction + pagIbigDeduction;
+                                            const netPay = finalSalary - totalDeductions;
+
+                                            const formatCurrency = (value) => {
+                                                return new Intl.NumberFormat('en-PH', {
+                                                    style: 'currency',
+                                                    currency: 'PHP',
+                                                }).format(value);
+                                            };
+
                                             db.query(
                                                 `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end, absent) 
                                                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -202,7 +216,7 @@ function processPayrollForPeriod(startDate, endDate) {
                                                     } else {
                                                         console.log(`Payroll processed for employee_id ${employee_id}`);
 
-                                                        const message = `Hello, ${name}. Your salary for the period from ${startDate} to ${endDate} has been processed. PHP${finalSalary.toFixed(2)} for ${totalHours} hours worked. Absences: ${absences}.`;
+                                                        const message = `Hello, ${name}. Your salary for the period from ${startDate} to ${endDate} has been processed. PHP${formatCurrency(netPay)} for ${totalHours} hours worked. Absences: ${absences}.`;
                                                         sendNotifications(employee_id, phone_number, email, message, notification_id);
 
                                                         if (!isManagerial) {
@@ -253,15 +267,15 @@ function generateUUID() {
 }
 
 async function sendSMS(to, from, text) {
-    // await vonage.sms.send({ to, from, text })
-    //     .then(resp => {
-    //         console.log('Message sent successfully');
-    //         console.log(resp);
-    //     })
-    //     .catch(err => {
-    //         console.log('There was an error sending the messages.');
-    //         console.error(err);
-    //     });
+    await vonage.sms.send({ to, from, text })
+        .then(resp => {
+            console.log('Message sent successfully');
+            console.log(resp);
+        })
+        .catch(err => {
+            console.log('There was an error sending the messages.');
+            console.error(err);
+        });
 }
 
 // Schedule the cron job
