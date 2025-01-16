@@ -216,7 +216,7 @@ function processPayrollForPeriod(startDate, endDate) {
                                                     } else {
                                                         console.log(`Payroll processed for employee_id ${employee_id}`);
 
-                                                        const message = `Hello, ${name}. Your salary for the period from ${startDate} to ${endDate} has been processed. PHP${formatCurrency(netPay)} for ${totalHours} hours worked. Absences: ${absences}.`;
+                                                        const message = `Hello, ${name}. Your salary for the period from ${startDate} to ${endDate} has been processed. ${formatCurrency(netPay)} for ${totalHours} hours worked. Absences: ${absences}.`;
                                                         sendNotifications(employee_id, phone_number, email, message, notification_id);
 
                                                         if (!isManagerial) {
