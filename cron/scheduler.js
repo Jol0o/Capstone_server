@@ -200,9 +200,10 @@ function processPayrollForPeriod(startDate, endDate) {
                                             const netPay = finalSalary - totalDeductions;
 
                                             const formatCurrency = (value) => {
-                                                return `PHP ${value.toFixed(2)}`;
+                                                return `PHP ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                                             };
 
+                                            
                                             db.query(
                                                 `INSERT INTO payroll (payroll_id, employee_id, hours_worked, total_pay, period_start, period_end, absent) 
                                                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
