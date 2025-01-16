@@ -200,10 +200,7 @@ function processPayrollForPeriod(startDate, endDate) {
                                             const netPay = finalSalary - totalDeductions;
 
                                             const formatCurrency = (value) => {
-                                                return new Intl.NumberFormat('en-PH', {
-                                                    style: 'currency',
-                                                    currency: 'PHP',
-                                                }).format(value);
+                                                return `PHP ${value.toFixed(2)}`;
                                             };
 
                                             db.query(
