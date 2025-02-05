@@ -66,10 +66,14 @@ router.post(
                 },
             });
 
+            
             const existingEmployee = await prisma.employees.findFirst({
                 where: {
-                    email,
-                },
+                    OR: [
+                        { email: email },
+                        { phone_number: phone_number }
+                    ]
+                }
             });
 
             if (existingRequest || existingEmployee) {

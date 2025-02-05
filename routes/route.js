@@ -184,7 +184,8 @@ router.get('/search_employee', async (req, res) => {
 
 
 router.get('/search_attendance', async (req, res) => {
-    const { q, limit = 10, offset = 0 } = req.query;
+    const { limit = 10, page = 1, startDate, endDate, q } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     if (!q) {
         return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
@@ -195,11 +196,16 @@ router.get('/search_attendance', async (req, res) => {
         FROM attendance 
         INNER JOIN employees ON attendance.employee_id = employees.employee_id
         WHERE 1=1
-        AND (attendance.employee_id LIKE ? OR attendance.attendance_id LIKE ? OR employees.name LIKE ?  OR employees.email LIKE ?)
+        ${startDate && endDate ? 'AND DATE(attendance.date) BETWEEN ? AND ?' : ''}
+        AND (attendance.employee_id LIKE ? OR attendance.attendance_id LIKE ? OR employees.name LIKE ? OR employees.email LIKE ?)
         ORDER BY attendance.date DESC
         LIMIT ? OFFSET ?
     `;
+
     const queryParams = [];
+    if (startDate && endDate) {
+        queryParams.push(startDate, endDate);
+    }
     const searchPattern = `%${q}%`;
     queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
@@ -213,30 +219,65 @@ router.get('/search_attendance', async (req, res) => {
 });
 
 router.get('/search_payroll', async (req, res) => {
-    const { q, limit = 10, offset = 0 } = req.query;
+    const { q, limit = 10, page = 1, startDate, endDate } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     if (!q) {
         return res.status(400).json({ status: 'error', message: 'Query parameter q is required' });
     }
 
-    let query = `
-        SELECT payroll.*, employees.name, employees.avatar
+    let payrollQuery = `
+        SELECT payroll.*, employees.name, employees.hierarchy, employees.department, employees.avatar
         FROM payroll 
         INNER JOIN employees ON payroll.employee_id = employees.employee_id
         WHERE 1=1
-        AND (payroll.employee_id LIKE ? OR payroll.payroll_id LIKE ? OR employees.name LIKE ?  OR employees.email LIKE ?)
+        ${startDate && endDate ? 'AND DATE(payroll.period_start) BETWEEN ? AND ?' : ''}
+        AND (payroll.employee_id LIKE ? OR payroll.payroll_id LIKE ? OR employees.name LIKE ? OR employees.email LIKE ?)
         LIMIT ? OFFSET ?
     `;
+
+    let attendanceQuery = `
+        SELECT employee_id, COUNT(*) as days_present
+        FROM attendance
+        WHERE 1=1
+        ${startDate && endDate ? 'AND DATE(date) BETWEEN ? AND ?' : ''}
+        GROUP BY employee_id
+    `;
+
     const queryParams = [];
+    if (startDate && endDate) {
+        queryParams.push(startDate, endDate);
+    }
     const searchPattern = `%${q}%`;
     queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), parseInt(offset));
 
-    db.query(query, queryParams, (err, results) => {
+    db.query(payrollQuery, queryParams, (err, payrollResults) => {
         if (err) {
             console.error(err);
             return res.status(500).json({ status: 'error', message: 'Internal server error' });
         }
-        res.status(200).json({ status: 'ok', data: results });
+
+        const attendanceParams = startDate && endDate ? [startDate, endDate] : [];
+        db.query(attendanceQuery, attendanceParams, (err, attendanceResults) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ status: 'error', message: 'Internal server error' });
+            }
+
+            const attendanceMap = attendanceResults.reduce((acc, curr) => {
+                acc[curr.employee_id] = curr.days_present;
+                return acc;
+            }, {});
+
+            const mergedResult = payrollResults.map(record => {
+                return {
+                    ...record,
+                    days_present: attendanceMap[record.employee_id] || 0
+                };
+            });
+
+            res.status(200).json({ status: 'ok', data: mergedResult });
+        });
     });
 });
 
@@ -614,7 +655,7 @@ router.get('/employees/:id', (req, res) => {
                     employee.day_off = true;
                 });
             }
-            
+
             res.status(200).json({ status: 'ok', data: result });
         }
     });
@@ -1099,7 +1140,7 @@ router.get('/payroll', (req, res) => {
     ${baseQuery}
     ORDER BY payroll.created_at ASC`;
 
-       const attendanceQuery = `
+    const attendanceQuery = `
         SELECT employee_id, COUNT(*) as days_present
         FROM attendance
         ${startDate && endDate ? 'WHERE DATE(date) BETWEEN ? AND ?' : ''}
@@ -1682,7 +1723,7 @@ router.get('/user-attendance/:id', (req, res) => {
                             const missingDate = previousDate.clone().add(i, 'days');
                             const missingLeaveData = getLeaveDataForDate(missingDate.format('YYYY-MM-DD'));
                             const isSunday = missingDate.day() === 0; // 0 represents Sunday
-                    
+
                             attendanceData.push({
                                 employee_id: record.employee_id,
                                 date: missingDate.format('YYYY-MM-DD'),
@@ -2029,7 +2070,7 @@ router.get('/leave_request', (req, res) => {
 
 router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
     const { id } = req.params;
-    const { status, approved_by, received_by, recorded_by, department_head, hr_department, withpay } = req.body;
+    const { status, approved_by, received_by, recorded_by, department_head, hr_department, withpay, rejected_reason } = req.body;
 
     // Ensure LeaveRequestStatus is defined and contains the expected values
     const LeaveRequestStatus = {
@@ -2056,8 +2097,8 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
         if (!received_by || !recorded_by) {
             return res.status(400).json({ status: 'error', message: 'Received by and recorded by are required' });
         }
-        query = 'UPDATE leaveRequest SET status = ?, received_by = ?, date_of_received = ?, recorded_by = ? WHERE id = ?';
-        values = [status, received_by, new Date(), recorded_by, id];
+        query = 'UPDATE leaveRequest SET status = ?, received_by = ?, date_of_received = ?, recorded_by = ?, rejected_reason = ? WHERE id = ?';
+        values = [status, received_by, new Date(), recorded_by, rejected_reason, id];
     } else if (status === 'Processing') {
         query = 'UPDATE leaveRequest SET status = ? WHERE id = ?';
         values = [status, id];
@@ -2102,13 +2143,37 @@ router.put('/leave_request/:id/status', authMiddleware, (req, res) => {
                         return res.status(500).json({ status: 'error', message: 'Database error' });
                     }
 
-                    res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
-                    if (req.io) {
-                        req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
-                        req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
-                    } else {
-                        console.error('Socket.io instance not found');
-                    }
+                    // Retrieve the employee's email
+                    db.query('SELECT email, name FROM employees WHERE employee_id = ?', [leaveRequest.employee_id], (err, result) => {
+                        if (err) {
+                            console.error(err);
+                            return res.status(500).json({ status: 'error', message: 'Database error' });
+                        }
+
+                        if (result.length === 0) {
+                            return res.status(404).json({ status: 'error', message: 'Employee not found' });
+                        }
+
+                        const { email, name } = result[0];
+
+                        const subject = 'Leave Request Update';
+                        const text = `Dear ${name},\n\nYour leave request has been updated. Here are the details:\n\n` +
+                            `Leave Type: ${leaveRequest.leave_type}\n` +
+                            `Reason: ${leaveRequest.reason}\n` +
+                            `Days Requested: ${leaveRequest.days_requested}\n` +
+                            `Status: ${leaveRequest.status}\n` +
+                            `${leaveRequest.status === 'Rejected' ? `Rejection Reason: ${leaveRequest.rejected_reason}\n\n` : ''}` +
+                            `Best regards,\nGasbee Inc.`;
+                        sendMails(email, subject, text);
+
+                        res.status(200).json({ status: 'ok', message: 'Leave request status and employee leave credits updated successfully' });
+                        if (req.io) {
+                            req.io.emit('employeeDataUpdate', { message: 'Employee data updated' });
+                            req.io.emit('leaveRequestUpdate', { message: 'Leave Request data updated' });
+                        } else {
+                            console.error('Socket.io instance not found');
+                        }
+                    });
                 });
             });
         });

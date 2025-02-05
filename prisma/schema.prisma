@@ -79,7 +79,8 @@ model leaveRequest {
   to_date             DateTime
   created_at          DateTime           @default(now())
   status              LeaveRequestStatus @default(Pending)
-  employee            employees?         @relation(fields: [employee_id], references: [employee_id])          // Indicate "With Pay" or "Without Pay"
+  rejected_reason     String?            
+  employee            employees?         @relation(fields: [employee_id], references: [employee_id])          
 }
 
 
